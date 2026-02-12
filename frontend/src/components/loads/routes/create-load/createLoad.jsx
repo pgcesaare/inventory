@@ -26,11 +26,13 @@ const CreateLoad = ({ onCreated }) => {
   const [searchMode, setSearchMode] = useState("single")
   const [tagSearch, setTagSearch] = useState("")
   const [tagListSearch, setTagListSearch] = useState("")
-  const [breedFilter, setBreedFilter] = useState("")
-  const [sellerFilter, setSellerFilter] = useState("")
+  const [breedFilter, setBreedFilter] = useState([])
+  const [sellerFilter, setSellerFilter] = useState([])
   const [calfDateFrom, setCalfDateFrom] = useState("")
   const [calfDateTo, setCalfDateTo] = useState("")
   const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" })
+  const [pickerRowLimit, setPickerRowLimit] = useState(15)
+  const [pickerPage, setPickerPage] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [message, setMessage] = useState("")
   const [fieldErrors, setFieldErrors] = useState({})
@@ -47,6 +49,7 @@ const CreateLoad = ({ onCreated }) => {
   const destinationRef = useRef(null)
   const departureDateRef = useRef(null)
   const calfPickerRef = useRef(null)
+  const pickAllRef = useRef(null)
 
   useEffect(() => {
     if (!token || !id) return
@@ -93,8 +96,8 @@ const CreateLoad = ({ onCreated }) => {
       const matchesTagList =
         tagTokens.length === 0 || tagTokens.some((token) => primary === token || eid === token)
       const matchesSearch = searchMode === "list" ? matchesTagList : matchesSingleSearch
-      const matchesBreed = !breedFilter || calf.breed === breedFilter
-      const matchesSeller = !sellerFilter || calf.seller === sellerFilter
+      const matchesBreed = breedFilter.length === 0 || breedFilter.includes(calf.breed)
+      const matchesSeller = sellerFilter.length === 0 || sellerFilter.includes(calf.seller)
 
       const calfDate = dateValue(calf)
       const dateMs = calfDate ? new Date(calfDate).getTime() : null
@@ -159,6 +162,54 @@ const CreateLoad = ({ onCreated }) => {
     const total = filteredCalves.reduce((sum, calf) => sum + calculateDaysOnFeed(calf), 0)
     return total / filteredCalves.length
   }, [filteredCalves])
+  const avgDaysOnFeedSelected = useMemo(() => {
+    const selectedCalves = inventoryCalves.filter((calf) => selectedPrimaryIDs.includes(calf.primaryID))
+    if (selectedCalves.length === 0) return 0
+    const total = selectedCalves.reduce((sum, calf) => sum + calculateDaysOnFeed(calf), 0)
+    return total / selectedCalves.length
+  }, [inventoryCalves, selectedPrimaryIDs])
+  const safePickerLimit = useMemo(() => {
+    const parsed = Number(pickerRowLimit)
+    if (!Number.isFinite(parsed)) return 15
+    return Math.max(0, Math.min(1000, parsed))
+  }, [pickerRowLimit])
+  const effectivePickerLimit = useMemo(
+    () => (safePickerLimit === 0 ? Math.max(1, sortedCalves.length) : safePickerLimit),
+    [safePickerLimit, sortedCalves.length]
+  )
+  const pickerTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(sortedCalves.length / effectivePickerLimit)),
+    [sortedCalves.length, effectivePickerLimit]
+  )
+  const visiblePickerCalves = useMemo(() => {
+    const start = (pickerPage - 1) * effectivePickerLimit
+    return sortedCalves.slice(start, start + effectivePickerLimit)
+  }, [sortedCalves, pickerPage, effectivePickerLimit])
+  const pickerPageStart = sortedCalves.length === 0 ? 0 : (pickerPage - 1) * effectivePickerLimit + 1
+  const pickerPageEnd = Math.min(pickerPage * effectivePickerLimit, sortedCalves.length)
+  const pickerPageButtons = useMemo(() => {
+    const windowSize = 5
+    const start = Math.max(1, pickerPage - Math.floor(windowSize / 2))
+    const end = Math.min(pickerTotalPages, start + windowSize - 1)
+    const adjustedStart = Math.max(1, end - windowSize + 1)
+    return Array.from({ length: end - adjustedStart + 1 }, (_, idx) => adjustedStart + idx)
+  }, [pickerPage, pickerTotalPages])
+
+  useEffect(() => {
+    setPickerPage(1)
+  }, [searchMode, tagSearch, tagListSearch, breedFilter, sellerFilter, calfDateFrom, calfDateTo, sortConfig.key, sortConfig.direction, safePickerLimit])
+
+  useEffect(() => {
+    if (pickerPage > pickerTotalPages) {
+      setPickerPage(pickerTotalPages)
+    }
+  }, [pickerPage, pickerTotalPages])
+  useEffect(() => {
+    if (!pickAllRef.current) return
+    const visibleIds = visiblePickerCalves.map((calf) => calf.primaryID).filter(Boolean)
+    const selectedVisibleCount = visibleIds.filter((idValue) => selectedPrimaryIDs.includes(idValue)).length
+    pickAllRef.current.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length
+  }, [visiblePickerCalves, selectedPrimaryIDs])
 
   const selectedCount = selectedPrimaryIDs.length
 
@@ -183,6 +234,19 @@ const CreateLoad = ({ onCreated }) => {
       const exists = prev.includes(primaryID)
       if (exists) return prev.filter((idValue) => idValue !== primaryID)
       return [...prev, primaryID]
+    })
+    if (pickerError) setPickerError("")
+  }
+  const toggleSelectAllVisible = () => {
+    const visibleIds = visiblePickerCalves.map((calf) => calf.primaryID).filter(Boolean)
+    if (visibleIds.length === 0) return
+
+    const allVisibleSelected = visibleIds.every((idValue) => selectedPrimaryIDs.includes(idValue))
+    setSelectedPrimaryIDs((prev) => {
+      if (allVisibleSelected) {
+        return prev.filter((idValue) => !visibleIds.includes(idValue))
+      }
+      return [...new Set([...prev, ...visibleIds])]
     })
     if (pickerError) setPickerError("")
   }
@@ -269,7 +333,7 @@ const CreateLoad = ({ onCreated }) => {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
-      <div className="rounded-2xl border border-primary-border/30 bg-surface p-4">
+      <div className="rounded-2xl border border-primary-border/30 bg-surface p-4 h-full">
         <p className="text-xs uppercase tracking-wide text-secondary">Load settings</p>
         <p className="mt-1 text-xs text-secondary">Fields marked with <span className="text-red-600">*</span> are required. For destination, provide ranch or custom value.</p>
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -347,7 +411,7 @@ const CreateLoad = ({ onCreated }) => {
         </div>
       </div>
 
-      <div ref={calfPickerRef} className="scroll-mt-24 rounded-2xl border border-primary-border/30 bg-surface p-7 lg:p-8">
+      <div ref={calfPickerRef} className="scroll-mt-24 rounded-2xl border border-primary-border/30 bg-surface p-7 lg:p-8 h-full">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h3 className="text-sm font-semibold text-primary-text">Calf picker<RequiredMark /></h3>
@@ -360,6 +424,9 @@ const CreateLoad = ({ onCreated }) => {
             </div>
             <div className="inline-flex items-center rounded-full border border-primary-border/40 bg-primary-border/10 px-3 py-1 text-xs font-medium text-primary-text">
               Avg DOF (filtered): {avgDaysOnFeedFiltered.toFixed(1)}
+            </div>
+            <div className="inline-flex items-center rounded-full border border-primary-border/40 bg-primary-border/10 px-3 py-1 text-xs font-medium text-primary-text">
+              Avg DOF (selected): {avgDaysOnFeedSelected.toFixed(1)}
             </div>
           </div>
         </div>
@@ -390,7 +457,7 @@ const CreateLoad = ({ onCreated }) => {
               />
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_110px] gap-3 xl:flex-1 xl:min-w-0">
+          <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px_110px] gap-3 xl:flex-1 xl:min-w-0">
             <BreedSellerFilterMenu
               className="w-full"
               menuAlign="right"
@@ -399,8 +466,8 @@ const CreateLoad = ({ onCreated }) => {
               breedOptions={breedOptions}
               sellerOptions={sellerOptions}
               onChange={({ breed, seller }) => {
-                setBreedFilter(breed ?? "")
-                setSellerFilter(seller ?? "")
+                setBreedFilter(Array.isArray(breed) ? breed : (breed ? [breed] : []))
+                setSellerFilter(Array.isArray(seller) ? seller : (seller ? [seller] : []))
               }}
             />
             <DateFilterMenu
@@ -413,15 +480,29 @@ const CreateLoad = ({ onCreated }) => {
                 setCalfDateTo(to)
               }}
             />
+            <input
+              type="number"
+              min={0}
+              max={1000}
+              className={fieldClass}
+              value={pickerRowLimit}
+              onChange={(e) => {
+                const nextValue = Number(e.target.value)
+                if (!Number.isFinite(nextValue)) return
+                setPickerRowLimit(Math.max(0, Math.min(1000, nextValue)))
+              }}
+              placeholder="Rows"
+            />
             <button
               type="button"
               onClick={() => {
                 setTagSearch("")
                 setTagListSearch("")
-                setBreedFilter("")
-                setSellerFilter("")
+                setBreedFilter([])
+                setSellerFilter([])
                 setCalfDateFrom("")
                 setCalfDateTo("")
+                setPickerPage(1)
               }}
               className={`w-full ${pickerButtonClass}`}
             >
@@ -433,10 +514,24 @@ const CreateLoad = ({ onCreated }) => {
         {pickerError && <p className="mt-2 text-xs text-red-600">{pickerError}</p>}
 
         <div className="mt-4 rounded-xl border border-primary-border/30">
-          <table className="w-full table-fixed border-collapse">
-            <thead className="bg-primary-border/10">
+          <div className="h-[600px] overflow-y-auto overflow-x-auto overscroll-contain">
+            <table className="w-full table-fixed border-collapse">
+            <thead className="sticky top-0 z-10 bg-primary-border/10">
               <tr>
-                <th className="w-16 px-3 py-2 text-left text-xs">Pick</th>
+                <th className="w-16 px-3 py-2 text-left text-xs">
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={pickAllRef}
+                      type="checkbox"
+                      onChange={toggleSelectAllVisible}
+                      checked={
+                        visiblePickerCalves.length > 0 &&
+                        visiblePickerCalves.every((calf) => selectedPrimaryIDs.includes(calf.primaryID))
+                      }
+                    />
+                    <span>Pick</span>
+                  </div>
+                </th>
                 <th className="px-3 py-2 text-left text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("primaryID")}>Visual Tag <span>{sortConfig.key === "primaryID" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
                 <th className="px-3 py-2 text-left text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("EID")}>EID <span>{sortConfig.key === "EID" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
                 <th className="px-3 py-2 text-left text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("dateIn")}>Date In <span>{sortConfig.key === "dateIn" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
@@ -445,7 +540,7 @@ const CreateLoad = ({ onCreated }) => {
               </tr>
             </thead>
             <tbody>
-              {sortedCalves.map((calf) => {
+              {visiblePickerCalves.map((calf) => {
                 const isSelected = selectedPrimaryIDs.includes(calf.primaryID)
                 return (
                   <tr
@@ -471,7 +566,7 @@ const CreateLoad = ({ onCreated }) => {
                   </tr>
                 )
               })}
-              {sortedCalves.length === 0 && (
+              {visiblePickerCalves.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-3 py-6 text-center text-sm text-secondary">
                     No calves match this search.
@@ -479,7 +574,61 @@ const CreateLoad = ({ onCreated }) => {
                 </tr>
               )}
             </tbody>
-          </table>
+            </table>
+          </div>
+          <div className="flex flex-col gap-2 border-t border-primary-border/20 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-secondary">
+              Showing {pickerPageStart}-{pickerPageEnd} of {sortedCalves.length}
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                className="rounded-lg border border-primary-border/40 px-2 py-1 text-xs disabled:opacity-50"
+                onClick={() => setPickerPage(1)}
+                disabled={pickerPage === 1}
+              >
+                First
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-primary-border/40 px-2 py-1 text-xs disabled:opacity-50"
+                onClick={() => setPickerPage((prev) => Math.max(1, prev - 1))}
+                disabled={pickerPage === 1}
+              >
+                Prev
+              </button>
+              {pickerPageButtons.map((pageNumber) => (
+                <button
+                  key={`picker-page-${pageNumber}`}
+                  type="button"
+                  className={`rounded-lg border px-2 py-1 text-xs ${
+                    pageNumber === pickerPage
+                      ? "border-action-blue/80 bg-action-blue text-white"
+                      : "border-primary-border/40 hover:bg-primary-border/10"
+                  }`}
+                  onClick={() => setPickerPage(pageNumber)}
+                >
+                  {pageNumber}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="rounded-lg border border-primary-border/40 px-2 py-1 text-xs disabled:opacity-50"
+                onClick={() => setPickerPage((prev) => Math.min(pickerTotalPages, prev + 1))}
+                disabled={pickerPage === pickerTotalPages}
+              >
+                Next
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-primary-border/40 px-2 py-1 text-xs disabled:opacity-50"
+                onClick={() => setPickerPage(pickerTotalPages)}
+                disabled={pickerPage === pickerTotalPages}
+              >
+                Last
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

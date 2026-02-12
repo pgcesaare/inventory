@@ -4,7 +4,8 @@ import { useToken } from '../api/useToken'
 import { useAppContext } from '../context'
 import { RanchSwitcher } from './components/ranchSwitcher'
 import { NavLink, useLocation, useParams } from 'react-router-dom'
-import { Beef, ChevronDown, Container, FileClock, LayoutDashboard, PencilLine, Sheet, Truck } from 'lucide-react'
+import { Beef, ChevronDown, Container, FileClock, LayoutDashboard, LogOut, PencilLine, Sheet, Truck } from 'lucide-react'
+import { useAuth0 } from "@auth0/auth0-react"
 
 import {
   Sidebar,
@@ -24,6 +25,7 @@ export function AppSidebar() {
     
     const { id } = useParams()
     const location = useLocation()
+    const { logout } = useAuth0()
     const token = useToken()
     const { ranch, setRanch, ranches, setRanches } = useAppContext()
     const [ loading, setLoading ] =useState(true)
@@ -140,6 +142,25 @@ export function AppSidebar() {
                     ))}
                   </SidebarMenuSub>
                 )}
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup className="mt-auto">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() =>
+                    logout({
+                      logoutParams: { returnTo: window.location.origin },
+                    })
+                  }
+                  className="cursor-pointer border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                >
+                  <LogOut />
+                  <span>Log out</span>
+                </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>

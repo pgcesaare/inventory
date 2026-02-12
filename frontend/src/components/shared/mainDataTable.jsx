@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 
 const DEFAULT_COLUMNS = [
   { key: "visualTag", label: "Visual Tag" },
@@ -7,8 +7,19 @@ const DEFAULT_COLUMNS = [
   { key: "sex", label: "Sex" },
 ]
 
-const MainDataTable = ({ title, rows = [], onRowClick, onTagClick, selectedRowKey, columns = DEFAULT_COLUMNS, filters }) => {
+const MainDataTable = ({
+  title,
+  rows = [],
+  onRowClick,
+  onTagClick,
+  selectedRowKey,
+  columns = DEFAULT_COLUMNS,
+  filters,
+  enablePagination = false,
+  pageSize = 50,
+}) => {
   const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" })
+  const [currentPage, setCurrentPage] = useState(1)
 
   const toggleSort = (key) => {
     setSortConfig((prev) => (
@@ -47,6 +58,43 @@ const MainDataTable = ({ title, rows = [], onRowClick, onTagClick, selectedRowKe
     })
   }, [rows, sortConfig])
 
+  const parsedPageSize = Number(pageSize)
+  const safePageSize = Number.isFinite(parsedPageSize)
+    ? Math.max(0, Math.min(1000, parsedPageSize))
+    : 15
+  const effectivePageSize = safePageSize === 0 ? Math.max(1, sortedRows.length) : safePageSize
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(sortedRows.length / effectivePageSize)),
+    [sortedRows.length, effectivePageSize]
+  )
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [effectivePageSize, rows])
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
+
+  const paginatedRows = useMemo(() => {
+    if (!enablePagination) return sortedRows
+    const start = (currentPage - 1) * effectivePageSize
+    const end = start + effectivePageSize
+    return sortedRows.slice(start, end)
+  }, [enablePagination, sortedRows, currentPage, effectivePageSize])
+
+  const pageStart = sortedRows.length === 0 ? 0 : (currentPage - 1) * effectivePageSize + 1
+  const pageEnd = Math.min(currentPage * effectivePageSize, sortedRows.length)
+  const visiblePageNumbers = useMemo(() => {
+    const windowSize = 5
+    const start = Math.max(1, currentPage - Math.floor(windowSize / 2))
+    const end = Math.min(totalPages, start + windowSize - 1)
+    const adjustedStart = Math.max(1, end - windowSize + 1)
+    return Array.from({ length: end - adjustedStart + 1 }, (_, idx) => adjustedStart + idx)
+  }, [currentPage, totalPages])
+
   return (
     <div className="relative rounded-2xl border border-primary-border/30 bg-white shadow-sm overflow-visible">
       <div className="px-4 py-3 border-b border-primary-border/30">
@@ -82,7 +130,7 @@ const MainDataTable = ({ title, rows = [], onRowClick, onTagClick, selectedRowKe
             </tr>
           </thead>
           <tbody>
-            {sortedRows.length === 0 && (
+            {paginatedRows.length === 0 && (
               <tr>
                 <td
                   colSpan={columns.length}
@@ -93,9 +141,9 @@ const MainDataTable = ({ title, rows = [], onRowClick, onTagClick, selectedRowKe
               </tr>
             )}
 
-            {sortedRows.map((row, index) => (
+            {paginatedRows.map((row, index) => (
               <tr
-                key={`${row.visualTag}-${index}`}
+                key={row.id || row.visualTag || `row-${index}`}
                 onClick={() => onRowClick && onRowClick(row)}
                 className={`
                   border-t border-primary-border/20 hover:bg-primary-border/5
@@ -129,6 +177,61 @@ const MainDataTable = ({ title, rows = [], onRowClick, onTagClick, selectedRowKe
           </tbody>
         </table>
       </div>
+      {enablePagination && (
+        <div className="flex flex-col gap-2 border-t border-primary-border/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-secondary">
+            Showing {pageStart}-{pageEnd} of {sortedRows.length}
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              className="rounded-lg border border-primary-border/40 px-2 py-1 text-xs disabled:opacity-50"
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+            >
+              First
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-primary-border/40 px-2 py-1 text-xs disabled:opacity-50"
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+            >
+              Prev
+            </button>
+            {visiblePageNumbers.map((pageNumber) => (
+              <button
+                key={`page-${pageNumber}`}
+                type="button"
+                className={`rounded-lg border px-2 py-1 text-xs ${
+                  pageNumber === currentPage
+                    ? "border-action-blue/80 bg-action-blue text-white"
+                    : "border-primary-border/40 hover:bg-primary-border/10"
+                }`}
+                onClick={() => setCurrentPage(pageNumber)}
+              >
+                {pageNumber}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="rounded-lg border border-primary-border/40 px-2 py-1 text-xs disabled:opacity-50"
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Next
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-primary-border/40 px-2 py-1 text-xs disabled:opacity-50"
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+            >
+              Last
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

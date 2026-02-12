@@ -1,5 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import { SlidersHorizontal } from "lucide-react"
+import { SlidersHorizontal, Search, X } from "lucide-react"
+
+const toArray = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean)
+  if (value === null || value === undefined || value === "") return []
+  return [value]
+}
+const toTitleCase = (value) => String(value || "").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
 
 const BreedSellerFilterMenu = ({
   breed,
@@ -14,6 +21,18 @@ const BreedSellerFilterMenu = ({
 }) => {
   const [open, setOpen] = useState(false)
   const rootRef = useRef(null)
+  const [breedSearch, setBreedSearch] = useState("")
+  const [sellerSearch, setSellerSearch] = useState("")
+  const selectedBreeds = useMemo(() => toArray(breed), [breed])
+  const selectedSellers = useMemo(() => toArray(seller), [seller])
+  const visibleBreedOptions = useMemo(
+    () => breedOptions.filter((option) => String(option).toLowerCase().includes(breedSearch.toLowerCase())),
+    [breedOptions, breedSearch]
+  )
+  const visibleSellerOptions = useMemo(
+    () => sellerOptions.filter((option) => String(option).toLowerCase().includes(sellerSearch.toLowerCase())),
+    [sellerOptions, sellerSearch]
+  )
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -28,11 +47,17 @@ const BreedSellerFilterMenu = ({
 
   const label = useMemo(() => {
     const parts = []
-    if (showBreed && breed) parts.push(`Breed: ${breed}`)
-    if (showSeller && seller) parts.push(`Seller: ${seller}`)
+    if (showBreed && selectedBreeds.length > 0) parts.push(`Breed: ${selectedBreeds.length}`)
+    if (showSeller && selectedSellers.length > 0) parts.push(`Seller: ${selectedSellers.length}`)
     if (parts.length === 0) return "Filter"
     return parts.join(" | ")
-  }, [breed, seller, showBreed, showSeller])
+  }, [selectedBreeds.length, selectedSellers.length, showBreed, showSeller])
+
+  const toggleOption = (current, value) => {
+    if (!value) return current
+    if (current.includes(value)) return current.filter((item) => item !== value)
+    return [...current, value]
+  }
 
   return (
     <div ref={rootRef} className={`relative ${className}`}>
@@ -51,39 +76,85 @@ const BreedSellerFilterMenu = ({
             {showBreed && (
               <div>
                 <label className="text-[11px] font-semibold text-secondary uppercase tracking-wide">Breed</label>
-                <select
-                  className="mt-1 w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs"
-                  value={breed || ""}
-                  onChange={(e) => onChange({ breed: e.target.value, seller })}
-                >
-                  <option value="">All breeds</option>
-                  {breedOptions.map((option) => (
-                    <option key={option} value={option}>{option}</option>
+                <div className="relative mt-1">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-secondary" />
+                  <input
+                    className="w-full rounded-lg border border-primary-border/40 pl-8 pr-2 py-1.5 text-xs"
+                    placeholder="Search breed"
+                    value={breedSearch}
+                    onChange={(e) => setBreedSearch(e.target.value)}
+                  />
+                  {breedSearch && (
+                    <button
+                      type="button"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
+                      onClick={() => setBreedSearch("")}
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+                <div className="mt-1 max-h-32 overflow-y-auto rounded-lg border border-primary-border/30 p-2">
+                  {visibleBreedOptions.length === 0 && <p className="text-xs text-secondary">No breeds</p>}
+                  {visibleBreedOptions.map((option) => (
+                    <label key={option} className="flex items-center gap-2 py-1 text-xs text-primary-text">
+                      <input
+                        type="checkbox"
+                        checked={selectedBreeds.includes(option)}
+                        onChange={() => onChange({ breed: toggleOption(selectedBreeds, option), seller: selectedSellers })}
+                      />
+                      <span>{toTitleCase(option)}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
               </div>
             )}
 
             {showSeller && (
               <div>
                 <label className="text-[11px] font-semibold text-secondary uppercase tracking-wide">Seller</label>
-                <select
-                  className="mt-1 w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs"
-                  value={seller || ""}
-                  onChange={(e) => onChange({ breed, seller: e.target.value })}
-                >
-                  <option value="">All sellers</option>
-                  {sellerOptions.map((option) => (
-                    <option key={option} value={option}>{option}</option>
+                <div className="relative mt-1">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-secondary" />
+                  <input
+                    className="w-full rounded-lg border border-primary-border/40 pl-8 pr-2 py-1.5 text-xs"
+                    placeholder="Search seller"
+                    value={sellerSearch}
+                    onChange={(e) => setSellerSearch(e.target.value)}
+                  />
+                  {sellerSearch && (
+                    <button
+                      type="button"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
+                      onClick={() => setSellerSearch("")}
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+                <div className="mt-1 max-h-32 overflow-y-auto rounded-lg border border-primary-border/30 p-2">
+                  {visibleSellerOptions.length === 0 && <p className="text-xs text-secondary">No sellers</p>}
+                  {visibleSellerOptions.map((option) => (
+                    <label key={option} className="flex items-center gap-2 py-1 text-xs text-primary-text">
+                      <input
+                        type="checkbox"
+                        checked={selectedSellers.includes(option)}
+                        onChange={() => onChange({ breed: selectedBreeds, seller: toggleOption(selectedSellers, option) })}
+                      />
+                      <span>{toTitleCase(option)}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
               </div>
             )}
 
             <button
               type="button"
               className="w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs hover:bg-primary-border/10"
-              onClick={() => onChange({ breed: "", seller: "" })}
+              onClick={() => {
+                setBreedSearch("")
+                setSellerSearch("")
+                onChange({ breed: [], seller: [] })
+              }}
             >
               Reset
             </button>

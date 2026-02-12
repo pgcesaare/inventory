@@ -33,8 +33,8 @@ const Inventory = () => {
     const [manageSearchMode, setManageSearchMode] = useState("single")
     const [tagSearch, setTagSearch] = useState("")
     const [bulkTagSearch, setBulkTagSearch] = useState("")
-    const [manageBreed, setManageBreed] = useState("")
-    const [manageSeller, setManageSeller] = useState("")
+    const [manageBreed, setManageBreed] = useState([])
+    const [manageSeller, setManageSeller] = useState([])
     const [dateFrom, setDateFrom] = useState("")
     const [dateTo, setDateTo] = useState("")
     const [bulkField, setBulkField] = useState("purchasePrice")
@@ -42,17 +42,17 @@ const Inventory = () => {
     const [bulkLoading, setBulkLoading] = useState(false)
     const [manageMessage, setManageMessage] = useState("")
     const [mainSearch, setMainSearch] = useState("")
-    const [mainBreed, setMainBreed] = useState("")
-    const [mainSeller, setMainSeller] = useState("")
+    const [mainBreed, setMainBreed] = useState([])
+    const [mainSeller, setMainSeller] = useState([])
     const [mainDateFrom, setMainDateFrom] = useState("")
     const [mainDateTo, setMainDateTo] = useState("")
-    const [mainRowLimit, setMainRowLimit] = useState(50)
+    const [mainRowLimit, setMainRowLimit] = useState(15)
 
-    const [breedFilterSeller, setBreedFilterSeller] = useState("")
+    const [breedFilterSeller, setBreedFilterSeller] = useState([])
     const [breedDateFrom, setBreedDateFrom] = useState("")
     const [breedDateTo, setBreedDateTo] = useState("")
 
-    const [sellerFilterBreed, setSellerFilterBreed] = useState("")
+    const [sellerFilterBreed, setSellerFilterBreed] = useState([])
     const [sellerDateFrom, setSellerDateFrom] = useState("")
     const [sellerDateTo, setSellerDateTo] = useState("")
     const [manageSort, setManageSort] = useState({ key: "", direction: "asc" })
@@ -153,11 +153,18 @@ const Inventory = () => {
     )
 
     const applyCalfFilters = (source, filters) => {
+      const asArray = (value) => {
+        if (Array.isArray(value)) return value
+        if (value === null || value === undefined || value === "") return []
+        return [value]
+      }
       return source.filter((calf) => {
         const haystack = `${calf.primaryID || ""} ${calf.EID || ""} ${calf.backTag || calf.originalID || ""}`.toLowerCase()
         const searchMatch = !filters.search || haystack.includes(filters.search.toLowerCase())
-        const breedMatch = !filters.breed || calf.breed === filters.breed
-        const sellerMatch = !filters.seller || calf.seller === filters.seller
+        const breedFilterValues = asArray(filters.breed)
+        const sellerFilterValues = asArray(filters.seller)
+        const breedMatch = breedFilterValues.length === 0 || breedFilterValues.includes(calf.breed)
+        const sellerMatch = sellerFilterValues.length === 0 || sellerFilterValues.includes(calf.seller)
 
         const rawDate = calf.dateIn || calf.placedDate
         const calfDate = rawDate ? new Date(rawDate) : null
@@ -211,23 +218,18 @@ const Inventory = () => {
       () => applyCalfFilters(calves, { search: mainSearch, breed: mainBreed, seller: mainSeller, dateFrom: mainDateFrom, dateTo: mainDateTo }),
       [calves, mainSearch, mainBreed, mainSeller, mainDateFrom, mainDateTo]
     )
-    const visibleMainCalves = useMemo(
-      () => filteredMainCalves.slice(0, mainRowLimit),
-      [filteredMainCalves, mainRowLimit]
-    )
-
     const filteredBreedCalves = useMemo(
-      () => applyCalfFilters(calves, { search: "", breed: "", seller: breedFilterSeller, dateFrom: breedDateFrom, dateTo: breedDateTo }),
+      () => applyCalfFilters(calves, { search: "", breed: [], seller: breedFilterSeller, dateFrom: breedDateFrom, dateTo: breedDateTo }),
       [calves, breedFilterSeller, breedDateFrom, breedDateTo]
     )
 
     const filteredSellerCalves = useMemo(
-      () => applyCalfFilters(calves, { search: "", breed: sellerFilterBreed, seller: "", dateFrom: sellerDateFrom, dateTo: sellerDateTo }),
+      () => applyCalfFilters(calves, { search: "", breed: sellerFilterBreed, seller: [], dateFrom: sellerDateFrom, dateTo: sellerDateTo }),
       [calves, sellerFilterBreed, sellerDateFrom, sellerDateTo]
     )
 
     const tableRows = useMemo(() => (
-      visibleMainCalves.map((calf) => ({
+      filteredMainCalves.map((calf) => ({
         id: calf.id,
         visualTag: calf.primaryID || calf.visualTag || "-",
         eid: calf.EID || calf.eid || "-",
@@ -242,7 +244,7 @@ const Inventory = () => {
           : "-",
         purchasePrice: formatMoneyCell(calf.purchasePrice ?? calf.price)
       }))
-    ), [visibleMainCalves])
+    ), [filteredMainCalves])
 
     const breedSummaryRows = useMemo(() => {
       const accumulator = new Map()
@@ -290,8 +292,8 @@ const Inventory = () => {
         const tagMatch = !tagSearch || tagValue.includes(tagSearch.toLowerCase())
         const multiTagMatch = bulkTokens.length === 0 || bulkTokens.some((token) => tagValue.includes(token))
         const searchModeMatch = manageSearchMode === "multi" ? multiTagMatch : tagMatch
-        const breedMatch = !manageBreed || calf.breed === manageBreed
-        const sellerMatch = !manageSeller || calf.seller === manageSeller
+        const breedMatch = manageBreed.length === 0 || manageBreed.includes(calf.breed)
+        const sellerMatch = manageSeller.length === 0 || manageSeller.includes(calf.seller)
 
         const rawDate = getCalfDate(calf)
         const calfDate = rawDate ? new Date(rawDate) : null
@@ -598,6 +600,49 @@ const Inventory = () => {
       }
     }
 
+    const handleBulkDeleteSelected = async () => {
+      if (!token || selectedIds.length === 0 || bulkLoading) return
+
+      const confirmed = window.confirm(
+        `Delete ${selectedIds.length} selected calves? This action cannot be undone.`
+      )
+      if (!confirmed) return
+
+      setBulkLoading(true)
+      setManageMessage("")
+
+      let deletedCount = 0
+      let failedCount = 0
+      const deletedSet = new Set()
+
+      try {
+        for (const calfId of selectedIds) {
+          try {
+            await deleteCalf(calfId, token)
+            deletedSet.add(calfId)
+            deletedCount += 1
+          } catch (error) {
+            const detail = error?.response?.data?.message || error?.response?.data || error?.message || "Unknown error"
+            console.error("Error bulk deleting calf:", detail)
+            failedCount += 1
+          }
+        }
+
+        if (deletedSet.size > 0) {
+          setCalves((prev) => prev.filter((calf) => !deletedSet.has(calf.id)))
+          setSelectedIds((prev) => prev.filter((idValue) => !deletedSet.has(idValue)))
+        }
+
+        if (failedCount > 0 && deletedCount === 0) {
+          setManageMessage(`Bulk delete failed. Failed: ${failedCount}. Check backend logs or API error details.`)
+        } else {
+          setManageMessage(`Bulk delete complete. Deleted: ${deletedCount}, Failed: ${failedCount}.`)
+        }
+      } finally {
+        setBulkLoading(false)
+      }
+    }
+
     const handleDeleteCalf = async () => {
       if (!selectedCalf?.id || !token) return
       const confirmed = window.confirm(`Delete calf "${selectedCalf.visualTag || selectedCalf.id}"? This action cannot be undone.`)
@@ -685,8 +730,8 @@ const Inventory = () => {
                   breedOptions={breedOptions}
                   sellerOptions={sellerOptions}
                   onChange={({ breed, seller }) => {
-                    setManageBreed(breed ?? "")
-                    setManageSeller(seller ?? "")
+                    setManageBreed(Array.isArray(breed) ? breed : (breed ? [breed] : []))
+                    setManageSeller(Array.isArray(seller) ? seller : (seller ? [seller] : []))
                   }}
                 />
               </div>
@@ -707,8 +752,8 @@ const Inventory = () => {
                   onClick={() => {
                     setTagSearch("")
                     setBulkTagSearch("")
-                    setManageBreed("")
-                    setManageSeller("")
+                    setManageBreed([])
+                    setManageSeller([])
                     setDateFrom("")
                     setDateTo("")
                   }}
@@ -720,7 +765,7 @@ const Inventory = () => {
             </div>
 
             <div className="rounded-xl border border-primary-border/20 bg-primary-border/5 p-3 pt-3">
-              <div className="grid grid-cols-1 md:grid-cols-[180px_1fr_220px] gap-2 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-[180px_1fr_220px_220px] gap-2 items-end">
                 <div>
                   <label className="text-xs font-semibold text-secondary">Field</label>
                   <select
@@ -756,6 +801,16 @@ const Inventory = () => {
                     className={`w-full ${manageButtonPrimaryClass}`}
                   >
                     {bulkLoading ? "Applying..." : `Apply to ${selectedIds.length} selected`}
+                  </button>
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    disabled={bulkLoading || selectedIds.length === 0}
+                    onClick={handleBulkDeleteSelected}
+                    className="w-full h-[36px] rounded-xl border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-100 disabled:opacity-60"
+                  >
+                    {bulkLoading ? "Deleting..." : `Delete ${selectedIds.length} selected`}
                   </button>
                 </div>
               </div>
@@ -847,6 +902,8 @@ const Inventory = () => {
             <MainDataTable
               title={loadingInventory ? "Loading manage calves..." : "Manage Calves"}
               rows={tableRows}
+              enablePagination
+              pageSize={mainRowLimit}
               columns={tableColumns}
               onRowClick={handleRowClick}
               selectedRowKey={selectedCalf?.id}
@@ -869,8 +926,8 @@ const Inventory = () => {
                       breedOptions={breedOptions}
                       sellerOptions={sellerOptions}
                       onChange={({ breed, seller }) => {
-                        setMainBreed(breed ?? "")
-                        setMainSeller(seller ?? "")
+                        setMainBreed(Array.isArray(breed) ? breed : (breed ? [breed] : []))
+                        setMainSeller(Array.isArray(seller) ? seller : (seller ? [seller] : []))
                       }}
                     />
                     <DateFilterMenu
@@ -882,16 +939,18 @@ const Inventory = () => {
                         setMainDateTo(to)
                       }}
                     />
-                    <select
+                    <input
+                      type="number"
+                      min={0}
+                      max={1000}
                       className="w-full rounded-xl border border-primary-border/40 px-3 py-2 text-xs"
                       value={mainRowLimit}
-                      onChange={(e) => setMainRowLimit(Number(e.target.value))}
-                    >
-                      <option value={25}>Rows: 25</option>
-                      <option value={50}>Rows: 50</option>
-                      <option value={100}>Rows: 100</option>
-                      <option value={200}>Rows: 200</option>
-                    </select>
+                      onChange={(e) => {
+                        const nextValue = Number(e.target.value)
+                        if (!Number.isFinite(nextValue)) return
+                        setMainRowLimit(Math.max(0, Math.min(1000, nextValue)))
+                      }}
+                    />
                     <button
                       type="button"
                       className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
@@ -905,8 +964,8 @@ const Inventory = () => {
                       className="w-full rounded-xl border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
                       onClick={() => {
                         setMainSearch("")
-                        setMainBreed("")
-                        setMainSeller("")
+                        setMainBreed([])
+                        setMainSeller([])
                         setMainDateFrom("")
                         setMainDateTo("")
                       }}
@@ -918,8 +977,8 @@ const Inventory = () => {
               }
             />
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="rounded-2xl border border-primary-border/30 bg-white shadow-sm overflow-visible">
+            <div className="grid grid-cols-1 lg:grid-cols-2 items-start gap-6">
+              <div className="h-fit rounded-2xl border border-primary-border/30 bg-white shadow-sm overflow-visible">
                 <div className="px-4 py-3 border-b border-primary-border/20">
                   <h3 className="text-sm font-semibold text-primary-text">Breed Summary</h3>
                 </div>
@@ -927,13 +986,13 @@ const Inventory = () => {
                   <div className="flex flex-wrap lg:flex-nowrap items-stretch gap-2">
                     <BreedSellerFilterMenu
                       className="w-[150px] shrink-0"
-                      breed=""
+                      breed={[]}
                       seller={breedFilterSeller}
                       showBreed={false}
                       showSeller
                       sellerOptions={sellerOptions}
                       onChange={({ seller }) => {
-                        setBreedFilterSeller(seller ?? "")
+                        setBreedFilterSeller(Array.isArray(seller) ? seller : (seller ? [seller] : []))
                       }}
                     />
                     <DateFilterMenu
@@ -949,7 +1008,7 @@ const Inventory = () => {
                       type="button"
                       className="w-[90px] shrink-0 rounded-lg border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
                       onClick={() => {
-                        setBreedFilterSeller("")
+                        setBreedFilterSeller([])
                         setBreedDateFrom("")
                         setBreedDateTo("")
                       }}
@@ -994,7 +1053,7 @@ const Inventory = () => {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-primary-border/30 bg-white shadow-sm overflow-visible">
+              <div className="h-fit rounded-2xl border border-primary-border/30 bg-white shadow-sm overflow-visible">
                 <div className="px-4 py-3 border-b border-primary-border/20">
                   <h3 className="text-sm font-semibold text-primary-text">Seller Summary</h3>
                 </div>
@@ -1003,12 +1062,12 @@ const Inventory = () => {
                     <BreedSellerFilterMenu
                       className="w-[150px] shrink-0"
                       breed={sellerFilterBreed}
-                      seller=""
+                      seller={[]}
                       showBreed
                       showSeller={false}
                       breedOptions={breedOptions}
                       onChange={({ breed }) => {
-                        setSellerFilterBreed(breed ?? "")
+                        setSellerFilterBreed(Array.isArray(breed) ? breed : (breed ? [breed] : []))
                       }}
                     />
                     <DateFilterMenu
@@ -1024,7 +1083,7 @@ const Inventory = () => {
                       type="button"
                       className="w-[90px] shrink-0 rounded-lg border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
                       onClick={() => {
-                        setSellerFilterBreed("")
+                        setSellerFilterBreed([])
                         setSellerDateFrom("")
                         setSellerDateTo("")
                       }}

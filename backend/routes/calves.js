@@ -12,6 +12,23 @@ const service = new CalvesService()
 const normalizeIncomingCalfPayload = (body, { forceCreationFields = false } = {}) => {
   const payload = { ...body }
 
+  const normalizeStatus = (statusValue) => {
+    const normalized = String(statusValue ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]/g, ' ')
+      .replace(/\s+/g, ' ')
+
+    if (!normalized) return ''
+    if (normalized === 'dead') return 'deceased'
+    if (normalized === 'deceased') return 'deceased'
+    if (normalized === 'feeding') return 'feeding'
+    if (normalized === 'alive') return 'alive'
+    if (normalized === 'sold') return 'sold'
+    if (normalized === 'shipped' || normalized === 'shipped out') return 'shipped'
+    return normalized
+  }
+
   if (Object.prototype.hasOwnProperty.call(payload, 'backTag')) {
     payload.originalID = payload.backTag
   }
@@ -27,7 +44,14 @@ const normalizeIncomingCalfPayload = (body, { forceCreationFields = false } = {}
   delete payload.purchasePrice
   delete payload.daysOnFeed
 
-  if (forceCreationFields) {
+  const normalizedStatus = normalizeStatus(payload.status)
+  if (normalizedStatus) {
+    payload.status = normalizedStatus
+  } else {
+    delete payload.status
+  }
+
+  if (forceCreationFields && payload.status === undefined) {
     payload.status = 'feeding'
   }
 

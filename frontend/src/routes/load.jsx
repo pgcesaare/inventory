@@ -26,8 +26,8 @@ const Load = () => {
     }, [selectedLoad])
 
     useEffect(() => {
-        setIsSlideOpen(!!selectedLoad || selectedCreateLoad)
-    }, [selectedLoad, selectedCreateLoad])
+        setIsSlideOpen(!!selectedLoad)
+    }, [selectedLoad])
 
     useEffect(() => {
         if (!selectedLoad || !token) return
@@ -63,7 +63,7 @@ const Load = () => {
     }
 
   return (
-    <div className="w-full h-full bg-background">
+    <div className="relative w-full h-full bg-background">
       <div className="flex h-full w-full flex-col lg:flex-row">
         <div className={`${isSlideOpen ? "lg:w-[38%]" : "lg:w-full"} h-full overflow-y-auto transition-all duration-200`}>
           {!isLoads ? (
@@ -92,20 +92,31 @@ const Load = () => {
         {isSlideOpen && (
           <div className="h-full border-l border-primary-border/30 lg:w-[62%] overflow-y-auto">
             <LoadSlideContainer
-              title={selectedCreateLoad ? "Create Load Order" : `Load Details #${selectedLoad || ""}`}
+              title={`Load Details #${selectedLoad || ""}`}
               onClose={handleClose}
             >
               <div className="p-4 md:p-5">
-                {selectedCreateLoad ? (
-                  <CreateLoad onCreated={handleCreated} />
-                ) : (
-                  <LoadDetails load={selectedLoadData} />
-                )}
+                <LoadDetails load={selectedLoadData} />
               </div>
             </LoadSlideContainer>
           </div>
         )}
       </div>
+
+      {selectedCreateLoad && (
+        <div className="absolute inset-0 z-50 bg-black/30 backdrop-blur-[1px]">
+          <div className="ml-auto h-full w-full border-l border-primary-border/30 bg-surface overflow-auto">
+            <LoadSlideContainer
+              title="Create Load Order"
+              onClose={handleClose}
+            >
+              <div className="p-4 md:p-5">
+                <CreateLoad onCreated={handleCreated} />
+              </div>
+            </LoadSlideContainer>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

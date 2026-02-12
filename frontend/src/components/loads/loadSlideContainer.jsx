@@ -2,7 +2,7 @@ import { X } from "lucide-react"
 
 const LoadSlideContainer = ({ title, children, onClose }) => {
   return (
-    <div className="sticky top-0 z-40 flex h-full w-full flex-col bg-surface">
+    <div className="relative z-40 flex h-full w-full flex-col overflow-hidden bg-surface">
       <div className="flex items-center justify-between border-b border-primary-border/30 bg-surface/90 p-4 backdrop-blur-sm">
         <h2 className="text-lg font-semibold text-primary-text">{title}</h2>
         <button
@@ -13,7 +13,9 @@ const LoadSlideContainer = ({ title, children, onClose }) => {
           <X className="size-5" />
         </button>
       </div>
-      {children}
+      <div className="flex-1 overflow-y-auto">
+        {children}
+      </div>
     </div>
   )
 }

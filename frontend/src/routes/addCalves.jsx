@@ -30,10 +30,12 @@ const HEADER_MAP = {
   datein: "dateIn",
   breed: "breed",
   sex: "sex",
+  gender: "sex",
   weight: "weight",
   purchaseprice: "purchasePrice",
   seller: "seller",
   dairy: "dairy",
+  status: "status",
   proteinlevel: "proteinLevel",
   proteintest: "proteinTest",
   deathdate: "deathDate",
@@ -54,10 +56,52 @@ const toKey = (value) =>
 const cleanText = (value) => String(value ?? "").trim()
 
 const normalizeSex = (value) => {
-  const normalized = cleanText(value).toLowerCase().replace(/\s+/g, "")
+  const raw =
+    value && typeof value === "object"
+      ? (value.text || value.w || value.v || value.result || "")
+      : value
+
+  const normalized = cleanText(raw)
+    .toLowerCase()
+    .replace(/[_-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+  const collapsed = normalized.replace(/\s+/g, "")
+  if (!collapsed) return ""
+
+  if (collapsed === "freemartin") return "freeMartin"
+  if (collapsed === "bull") return "bull"
+  if (collapsed === "heifer") return "heifer"
+  if (collapsed === "steer") return "steer"
+
+  // Extra aliases seen in imported files
+  if (collapsed === "free") return "freeMartin"
+  if (collapsed === "fm") return "freeMartin"
+  if (collapsed === "b") return "bull"
+  if (collapsed === "h") return "heifer"
+  if (collapsed === "s") return "steer"
+  if (collapsed === "f" || collapsed === "fr") return "freeMartin"
+
+  return ""
+}
+
+const normalizeStatus = (value) => {
+  const normalized = cleanText(value)
+    .toLowerCase()
+    .replace(/[_-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
   if (!normalized) return ""
-  if (normalized === "freemartin") return "freeMartin"
-  if (normalized === "bull" || normalized === "heifer" || normalized === "steer") return normalized
+
+  if (normalized === "dead") return "deceased"
+  if (normalized === "deceased") return "deceased"
+  if (normalized === "feeding") return "feeding"
+  if (normalized === "alive") return "alive"
+  if (normalized === "sold") return "sold"
+  if (normalized === "shipped" || normalized === "shipped out") return "shipped"
+
   return ""
 }
 
@@ -101,11 +145,12 @@ const mapRawRow = (row) => {
 const buildTemplateFile = () => {
   const headers = [
     "Visual Tag",
-    "EID",
+    "EID (optional)",
     "Back Tag",
     "Date In",
     "Breed",
     "Sex",
+    "Status (optional)",
     "Weight",
     "Purchase Price",
     "Seller",
@@ -122,6 +167,7 @@ const buildTemplateFile = () => {
     "2026-01-20",
     "holstein",
     "bull",
+    "feeding",
     420.5,
     1450.5,
     "Acme Farms",
@@ -233,7 +279,7 @@ const AddCalves = () => {
         return [
           { label: "Mode", value: "One by one" },
           { label: "Last Status", value: singleMessage ? (singleMessageTone === "success" ? "Success" : "Error") : "Pending" },
-          { label: "Ready", value: singleForm.primaryID && singleForm.EID && singleForm.dateIn && singleForm.breed && singleForm.sex && singleForm.seller ? "Yes" : "No" },
+          { label: "Ready", value: singleForm.primaryID && singleForm.dateIn && singleForm.breed && singleForm.sex && singleForm.seller ? "Yes" : "No" },
           { label: "Created", value: singleMessageTone === "success" ? 1 : 0 },
         ]
       }
@@ -253,7 +299,6 @@ const AddCalves = () => {
       singleMessage,
       singleMessageTone,
       singleForm.primaryID,
-      singleForm.EID,
       singleForm.dateIn,
       singleForm.breed,
       singleForm.sex,
@@ -323,19 +368,25 @@ const AddCalves = () => {
           dairy: cleanText(row.dairy),
           currentRanchID: parseInteger(row.currentRanchID) || ranchId,
           originRanchID: parseInteger(row.originRanchID) || ranchId,
-          status: "feeding",
+          status: normalizeStatus(row.status) || "feeding",
           proteinLevel: parseNumber(row.proteinLevel),
           proteinTest: cleanText(row.proteinTest).toLowerCase() || "pending",
           preDaysOnFeed: parseInteger(row.preDaysOnFeed) ?? 0,
         }
 
         if (!payload.primaryID) errors.push("Visual Tag/primaryID is required")
-        if (!payload.EID) errors.push("EID is required")
         if (!payload.dateIn) errors.push("Date In is required")
         if (!payload.breed) errors.push("Breed is required")
-        if (!payload.sex) errors.push("Sex must be one of: bull, heifer, steer, freeMartin")
+        if (!cleanText(row.sex)) {
+          errors.push("Sex is required")
+        } else if (!payload.sex) {
+          errors.push(`Sex value "${cleanText(row.sex)}" is invalid. Use bull, heifer, steer, or free martin`)
+        }
         if (!payload.seller) errors.push("Seller is required")
         if (!payload.currentRanchID) errors.push("currentRanchID is required")
+        if (cleanText(row.status) && !normalizeStatus(row.status)) {
+          errors.push(`Status value "${cleanText(row.status)}" is invalid. Use feeding, alive, sold, shipped, or dead/deceased`)
+        }
 
         if (errors.length > 0) {
           nextInvalidRows.push({ rowNumber, errors, rawRow })
@@ -427,7 +478,6 @@ const AddCalves = () => {
 
     const nextErrors = {}
     if (!payload.primaryID) nextErrors.primaryID = "Visual Tag is required."
-    if (!payload.EID) nextErrors.EID = "EID is required."
     if (!payload.dateIn) nextErrors.dateIn = "Date In is required."
     if (!payload.breed) nextErrors.breed = "Breed is required."
     if (!payload.sex) nextErrors.sex = "Sex is required."
@@ -484,10 +534,6 @@ const AddCalves = () => {
       nextErrors.sex = "Sex is invalid."
     }
 
-    if (!cleanText(groupForm.eidPrefix)) {
-      nextErrors.eidPrefix = "EID Prefix is required."
-    }
-
     if (!normalizeDate(groupForm.dateIn)) {
       nextErrors.dateIn = "Date In is required."
     }
@@ -502,7 +548,8 @@ const AddCalves = () => {
       const sequence = String(startNumber + index).padStart(Math.max(1, padLength), "0")
       const primaryID = `${cleanText(groupForm.tagPrefix)}${sequence}`
       const backTag = `${cleanText(groupForm.backTagPrefix)}${sequence}`
-      const EID = `${cleanText(groupForm.eidPrefix)}${sequence}`
+      const eidPrefix = cleanText(groupForm.eidPrefix)
+      const EID = eidPrefix ? `${eidPrefix}${sequence}` : ""
 
       return {
         index: index + 1,
@@ -682,7 +729,7 @@ const AddCalves = () => {
               {singleErrors.primaryID && <p className="mt-1 text-xs text-red-600">{singleErrors.primaryID}</p>}
             </div>
             <div>
-              <label className="text-xs font-semibold text-secondary">EID<RequiredMark /></label>
+              <label className="text-xs font-semibold text-secondary">EID</label>
               <div className="relative">
                 <input className={clearableInputClass} value={singleForm.EID} onChange={(e) => handleSingleChange("EID", e.target.value)} />
                 {singleForm.EID && (
@@ -691,7 +738,6 @@ const AddCalves = () => {
                   </button>
                 )}
               </div>
-              {singleErrors.EID && <p className="mt-1 text-xs text-red-600">{singleErrors.EID}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Back Tag</label>
@@ -879,9 +925,8 @@ const AddCalves = () => {
               <input className={fieldClass} value={groupForm.padLength} onChange={(e) => handleGroupChange("padLength", e.target.value)} />
             </div>
             <div>
-              <label className="text-xs font-semibold text-secondary">EID Prefix<RequiredMark /></label>
+              <label className="text-xs font-semibold text-secondary">EID Prefix</label>
               <input className={fieldClass} value={groupForm.eidPrefix} onChange={(e) => handleGroupChange("eidPrefix", e.target.value)} />
-              {groupErrors.eidPrefix && <p className="mt-1 text-xs text-red-600">{groupErrors.eidPrefix}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Date In<RequiredMark /></label>

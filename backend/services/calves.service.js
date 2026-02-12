@@ -8,7 +8,7 @@ class CalvesService {
     async create(data) {
         const createPayload = {
             ...data,
-            status: 'feeding'
+            status: data.status || 'feeding'
         }
 
         const newCalf = await model.Calves.create(createPayload)
