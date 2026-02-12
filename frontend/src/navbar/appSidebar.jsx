@@ -4,7 +4,7 @@ import { useToken } from '../api/useToken'
 import { useAppContext } from '../context'
 import { RanchSwitcher } from './components/ranchSwitcher'
 import { NavLink, useParams } from 'react-router-dom'
-import { Container, FileClock, Plus, Truck } from 'lucide-react'
+import { Container, FileClock, LayoutDashboard, PencilLine, Sheet, Truck } from 'lucide-react'
 
 import {
   Sidebar,
@@ -40,13 +40,18 @@ export function AppSidebar() {
         }
         fetchRanchData()
       }
-    }, [id, token])
+    }, [id, token, setRanch, setRanches])
 
     if(loading) return null
     if(!ranch) return null
     if(!ranches) return null
 
     const items = [
+      {
+        title: "Dashboard",
+        url: "/dashboard",
+        icon: LayoutDashboard,
+      },
       {
         title: "Inventory",
         url: `/dashboard/ranch/${ranch.id}/inventory`,
@@ -61,12 +66,17 @@ export function AppSidebar() {
         title: "Loads",
         url: `/dashboard/ranch/${ranch.id}/loads`,
         icon: Truck,
-      },  
+      },
       {
-        title: "Register Calves",
+        title: "Add Calves",
         url: `/dashboard/ranch/${ranch.id}/add-calves`,
-        icon: Plus,
-      }, 
+        icon: Sheet,
+      },
+      {
+        title: "Manage Calves",
+        url: `/dashboard/ranch/${ranch.id}/inventory?mode=manage`,
+        icon: PencilLine,
+      },
     ]    
 
   return (

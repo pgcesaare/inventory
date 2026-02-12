@@ -49,15 +49,7 @@ const Navbar = () => {
                                 }>
                                     Historical
                             </NavLink>
-                        </li>
-                        <li>
-                            <NavLink to={`/dashboard/ranch/${ranch.id}/add-calves`}
-                                className={({ isActive }) => 
-                                (isActive ? 'active-link' : undefined)
-                                }>
-                                    Add calves
-                            </NavLink>
-                        </li>                             
+                        </li>                            
                     </ul>
                 </nav>
             }   

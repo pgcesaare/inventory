@@ -16,64 +16,190 @@ const randomColor = () => {
 const CreateNewRanch = () => {
   const token = useToken()
   const { setShowCreateNewRanchPopup, setRanches } = useAppContext()
-  const [formData, setFormData] = useState({})
+
+  const [formData, setFormData] = useState({
+    name: "",
+    address: "",
+    city: "",
+    state: "",
+    manager: ""
+  })
+
+  const [errors, setErrors] = useState({})
+  const [loading, setLoading] = useState(false)
 
   const handleChange = (name, value) => {
     setFormData(prev => ({ ...prev, [name]: value }))
+
+    // Clear error when typing
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: "" }))
+    }
+  }
+
+  const validate = () => {
+    let newErrors = {}
+
+    if (!formData.name.trim())
+      newErrors.name = "Name is required"
+
+    if (!formData.address.trim())
+      newErrors.address = "Address is required"
+
+    if (!formData.city.trim())
+      newErrors.city = "City is required"
+
+    if (!formData.state.trim())
+      newErrors.state = "State is required"
+
+    if (!formData.manager.trim())
+      newErrors.manager = "Manager is required"
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+
+    if (!validate()) return
+
     try {
-      let newRanch = { ...formData, color: randomColor() }
+      setLoading(true)
+
+      let newRanch = {
+        ...formData,
+        color: randomColor()
+      }
+
       newRanch = await createRanch(newRanch, token)
-      console.log("Ranch successfully created")
+
       setRanches(prev => [...prev, newRanch])
       setShowCreateNewRanchPopup(false)
+
     } catch (error) {
       console.error("Error creating ranch:", error)
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
-    <Popup 
-      title="Create new ranch"
+    <Popup
+      title="Create New Ranch"
       content={
-        <form className="flex flex-col h-full" onSubmit={handleSubmit}>
-          <div className="flex flex-col flex-1 gap-2">
-            <Input 
-              type="text"
-              label="Name"
-              name="name"
-              placeholder="Enter ranch name"
-              onChange={(value) => handleChange("name", value)}
-            />
-            <Input 
-              type="text"
-              label="Address"
-              name="address"
-              placeholder="Enter ranch address"
-              onChange={(value) => handleChange("address", value)}
-            />
-            <Input 
-              type="text"
-              label="City"
-              name="city"
-              placeholder="Enter ranch city"
-              onChange={(value) => handleChange("city", value)}
-            />
-            <Input 
-              type="text"
-              label="State"
-              name="state"
-              placeholder="Enter ranch state"
-              onChange={(value) => handleChange("state", value)}
-            />            
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col h-full w-full"
+        >
+          <div className="flex flex-col gap-6 py-2">
+
+            <div className="flex flex-col gap-1">
+              <h3 className="text-sm font-semibold text-primary-text">
+                Ranch Information
+              </h3>
+              <p className="text-xs text-secondary opacity-70">
+                Fill in the details below to register a new ranch.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+
+              <div>
+                <Input
+                  type="text"
+                  label="Name"
+                  name="name"
+                  placeholder="Enter ranch name"
+                  onChange={(value) => handleChange("name", value)}
+                />
+                {errors.name && (
+                  <p className="text-xs text-red-500 mt-1">
+                    {errors.name}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <Input
+                  type="text"
+                  label="Address"
+                  name="address"
+                  placeholder="Enter ranch address"
+                  onChange={(value) => handleChange("address", value)}
+                />
+                {errors.address && (
+                  <p className="text-xs text-red-500 mt-1">
+                    {errors.address}
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+
+                <div>
+                  <Input
+                    type="text"
+                    label="City"
+                    name="city"
+                    placeholder="Enter city"
+                    onChange={(value) => handleChange("city", value)}
+                  />
+                  {errors.city && (
+                    <p className="text-xs text-red-500 mt-1">
+                      {errors.city}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <Input
+                    type="text"
+                    label="State"
+                    name="state"
+                    placeholder="Enter state"
+                    onChange={(value) => handleChange("state", value)}
+                  />
+                  {errors.state && (
+                    <p className="text-xs text-red-500 mt-1">
+                      {errors.state}
+                    </p>
+                  )}
+                </div>
+
+              </div>
+
+              <div>
+                <Input
+                  type="text"
+                  label="Manager"
+                  name="manager"
+                  placeholder="Enter manager name"
+                  onChange={(value) => handleChange("manager", value)}
+                />
+                {errors.manager && (
+                  <p className="text-xs text-red-500 mt-1">
+                    {errors.manager}
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div className="flex justify-end gap-2 mt-auto pt-4 border-t border-gray-200">
-            <ResetButton text="Cancel" type="button" onClick={() => setShowCreateNewRanchPopup(false)} />
-            <EnterButton text="Enter" />
+          <div className="
+            flex justify-end gap-3
+            mt-8 pt-6
+            border-t border-primary-border/40
+          ">
+            <ResetButton
+              text="Cancel"
+              type="button"
+              onClick={() => setShowCreateNewRanchPopup(false)}
+            />
+            <EnterButton
+              text={loading ? "Creating..." : "Create Ranch"}
+              disabled={loading}
+            />
           </div>
         </form>
       }

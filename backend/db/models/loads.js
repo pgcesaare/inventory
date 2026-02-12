@@ -26,7 +26,7 @@ const LoadsSchema = {
   },
 
   destinationRanchID: {
-    allowNull: false,
+    allowNull: true,
     type: DataTypes.INTEGER,
     field: 'destination_ranch_id',
     references: {
@@ -35,6 +35,12 @@ const LoadsSchema = {
       },
       onUpdate: 'CASCADE',
       onDelete: 'SET NULL'    
+    },
+
+    destinationName: {
+      allowNull: true,
+      type: DataTypes.STRING,
+      field: 'destination_name'
     },
 
     departureDate: {
@@ -53,6 +59,11 @@ const LoadsSchema = {
     allowNull: true,
     type: DataTypes.STRING,
    },
+
+  trucking: {
+    allowNull: true,
+    type: DataTypes.STRING,
+  },
 
 
 
@@ -74,6 +85,11 @@ class Loads extends Model {
     this.hasMany(models.CalfLoads, {
       foreignKey: 'loadID',
       as: 'load'
+    })
+
+    this.hasMany(models.CalfMovementHistory, {
+      foreignKey: 'loadID',
+      as: 'movementHistory'
     })
     
     }

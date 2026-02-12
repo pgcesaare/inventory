@@ -1,6 +1,6 @@
 "use client"
 import * as React from "react"
-import { ChevronsUpDown, Plus } from "lucide-react"
+import { ChevronsUpDown, Pencil, Plus, Trash2 } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,11 +17,17 @@ import {
 } from "@components/ui/sidebar"
 import { useAppContext } from "../../context"
 import { useNavigate } from "react-router-dom"
+import { useToken } from "../../api/useToken"
+import { deleteRanch, getRanches, updateRanch } from "../../api/ranches"
+import EditRanchModal from "../../components/dashboard/editRanchModal"
 
 export function RanchSwitcher({ currentRanch, ranches }) {
-  const { setShowCreateNewRanchPopup, setRanch } = useAppContext() // optional: set active ranch globally
+  const { setShowCreateNewRanchPopup, setRanch, setRanches } = useAppContext()
   const { isMobile } = useSidebar()
   const navigate = useNavigate()
+  const token = useToken()
+  const [editingRanch, setEditingRanch] = React.useState(null)
+  const [isSaving, setIsSaving] = React.useState(false)
 
   const handleNewRanch = () => setShowCreateNewRanchPopup(true)
 
@@ -31,6 +37,63 @@ export function RanchSwitcher({ currentRanch, ranches }) {
 
     // navigate using the clicked ranch directly (no stale state)
     navigate(`/dashboard/ranch/${ranch.id}/inventory`)
+  }
+
+  const handleEditCurrentRanch = () => {
+    setEditingRanch(currentRanch)
+  }
+
+  const handleSaveRanch = async (changes) => {
+    if (!editingRanch || !token) return
+
+    try {
+      setIsSaving(true)
+      const updated = await updateRanch(editingRanch.id, changes, token)
+
+      if (currentRanch?.id === updated.id && setRanch) {
+        setRanch((prev) => ({ ...(prev || {}), ...updated }))
+      }
+
+      if (setRanches) {
+        setRanches((prev) => prev.map((item) => (
+          item.id === updated.id ? { ...item, ...updated } : item
+        )))
+      }
+
+      setEditingRanch(null)
+    } catch (error) {
+      console.error("Error updating ranch:", error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleDeleteCurrentRanch = async () => {
+    if (!token || !currentRanch) return
+    const confirmed = window.confirm(`Delete ranch "${currentRanch.name}"? This action cannot be undone.`)
+    if (!confirmed) return
+
+    try {
+      await deleteRanch(currentRanch.id, token)
+      const refreshed = await getRanches(token)
+
+      if (!refreshed || refreshed.length === 0) {
+        if (setRanch) setRanch(null)
+        if (setRanches) setRanches([])
+        navigate("/dashboard")
+        return
+      }
+
+      const nextRanch = refreshed[0]
+      const rest = refreshed.filter((item) => item.id !== nextRanch.id)
+
+      if (setRanch) setRanch(nextRanch)
+      if (setRanches) setRanches(rest)
+      navigate(`/dashboard/ranch/${nextRanch.id}/inventory`)
+    } catch (error) {
+      console.error("Error deleting ranch:", error)
+      window.alert(error?.response?.data?.message || "Could not delete ranch.")
+    }
   }
 
   if (!currentRanch) return null
@@ -85,6 +148,22 @@ export function RanchSwitcher({ currentRanch, ranches }) {
 
             <DropdownMenuSeparator />
 
+            <DropdownMenuItem onClick={handleEditCurrentRanch} className="gap-2 p-2 cursor-pointer">
+              <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
+                <Pencil className="size-4" />
+              </div>
+              <div className="text-muted-foreground font-medium">Edit current ranch</div>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem onClick={handleDeleteCurrentRanch} className="gap-2 p-2 cursor-pointer">
+              <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
+                <Trash2 className="size-4" />
+              </div>
+              <div className="text-red-600 font-medium">Delete current ranch</div>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
             <DropdownMenuItem onClick={handleNewRanch} className="gap-2 p-2 cursor-pointer">
               <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
                 <Plus className="size-4" />
@@ -94,6 +173,15 @@ export function RanchSwitcher({ currentRanch, ranches }) {
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
+
+      {editingRanch && (
+        <EditRanchModal
+          ranch={editingRanch}
+          loading={isSaving}
+          onClose={() => setEditingRanch(null)}
+          onSave={handleSaveRanch}
+        />
+      )}
     </SidebarMenu>
   )
 }

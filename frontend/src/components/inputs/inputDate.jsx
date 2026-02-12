@@ -10,6 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@components/ui/popover"
+import { formatDateMMDDYYYY } from "../../utils/dateFormat"
 
 export default function DatePicker({ label, value, onChange }) {
   const [open, setOpen] = React.useState(false)
@@ -56,7 +57,7 @@ export default function DatePicker({ label, value, onChange }) {
                 pr-8
               `}
             >
-              {value ? new Date(value).toLocaleDateString() : "Select date"}
+              {value ? formatDateMMDDYYYY(value, "Select date") : "Select date"}
               <ChevronDownIcon className="ml-2 w-4 h-4" />
             </Button>
           </PopoverTrigger>

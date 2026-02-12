@@ -1,17 +1,21 @@
-import { X } from "lucide-react";
+import { X } from "lucide-react"
 
 const LoadSlideContainer = ({ title, children, onClose }) => {
   return (
-    <div className="w-full h-full sticky top-0 z-50 flex flex-col border-l border-gray-300">
-        <div className="flex flex-row justify-between border-b border-gray-300 p-4">
-            <h2 className="text-lg text-gray-900 font-semibold">{title}</h2>
-            <button className="cursor-pointer p-1 hover:bg-gray-200 rounded-full"
-              onClick={onClose}
-            ><X className="size-5 text-black"/></button>
-        </div>
+    <div className="sticky top-0 z-40 flex h-full w-full flex-col bg-white">
+      <div className="flex items-center justify-between border-b border-primary-border/30 bg-white/90 p-4 backdrop-blur-sm">
+        <h2 className="text-lg font-semibold text-primary-text">{title}</h2>
+        <button
+          type="button"
+          className="cursor-pointer rounded-full p-1.5 text-secondary hover:bg-primary-border/15 hover:text-primary-text"
+          onClick={onClose}
+        >
+          <X className="size-5" />
+        </button>
+      </div>
       {children}
     </div>
-  );
-};
+  )
+}
 
-export default LoadSlideContainer;
+export default LoadSlideContainer

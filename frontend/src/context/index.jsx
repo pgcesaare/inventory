@@ -1,4 +1,5 @@
-import React, { createContext, useState, useContext } from 'react'
+/* eslint-disable react-refresh/only-export-components */
+import React, { createContext, useState, useContext, useEffect } from 'react'
 
 const AppContext = createContext()
 
@@ -16,6 +17,29 @@ export const AppProvider = ({ children }) => {
     dateTo: "",
   })
   const [ showCreateNewRanchPopup, setShowCreateNewRanchPopup ] = useState(false)
+  const [ theme, setTheme ] = useState("light")
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("theme")
+    const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+    const initialTheme = savedTheme || (systemPrefersDark ? "dark" : "light")
+
+    setTheme(initialTheme)
+  }, [])
+
+  useEffect(() => {
+    const root = document.documentElement
+    if (theme === "dark") {
+      root.classList.add("dark")
+    } else {
+      root.classList.remove("dark")
+    }
+    localStorage.setItem("theme", theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"))
+  }
 
   const value = {
     ranch,
@@ -27,7 +51,10 @@ export const AppProvider = ({ children }) => {
     selected, 
     setSelected,
     showCreateNewRanchPopup,
-    setShowCreateNewRanchPopup
+    setShowCreateNewRanchPopup,
+    theme,
+    setTheme,
+    toggleTheme
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

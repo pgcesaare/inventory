@@ -10,8 +10,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@components/ui/popover"
+import { formatDateMMDDYYYY } from "../../../utils/dateFormat"
 
-export default function DatePicker({ text, value, onSelect, setIsFilter }) {
+export default function DatePicker({ text, value, onSelect }) {
   const [open, setOpen] = React.useState(false)
 
   const handleSelect = (selectedDate) => {
@@ -32,7 +33,7 @@ export default function DatePicker({ text, value, onSelect, setIsFilter }) {
             id="date"
             className="w-full justify-between font-normal text-base text-gray-600"
           >
-            {value ? value.toLocaleDateString() : "Select date"}
+            {value ? formatDateMMDDYYYY(value, "Select date") : "Select date"}
             <ChevronDownIcon className="ml-auto"/>
           </Button>
         </PopoverTrigger>

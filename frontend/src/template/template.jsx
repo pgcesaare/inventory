@@ -13,13 +13,13 @@ const Template = ({ navbar, content, title }) => {
         {/* Main content area */}
         <div className="flex-1 flex flex-col h-full">
           {/* Trigger at the top */}
-          <div className=" flex flex-row gap-2 px-4 items-center flex-none sticky top-0 z-50 border-b border-gray-300 h-fit">
+          <div className=" flex flex-row gap-2 px-4 items-center flex-none sticky top-0 z-50 border-b border-primary-border/40 bg-background h-fit">
             <SidebarTrigger />
             <Separator
               orientation="vertical"
               className="mr-2 data-[orientation=vertical]:h-"
             />            
-            <h1 className="font-bold text-base">{title}</h1>
+            <h1 className="font-bold text-base text-primary-text">{title}</h1>
           </div>
 
           {/* Content fills remaining space */}

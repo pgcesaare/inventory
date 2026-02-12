@@ -54,8 +54,24 @@ const CalvesSchema = {
     type: DataTypes.DECIMAL(10,2),
   },
 
+  sellPrice: {
+    allowNull: true,
+    type: DataTypes.DECIMAL(10,2),
+    field: 'sell_price',
+  },
+
+  weight: {
+    allowNull: true,
+    type: DataTypes.DECIMAL(10,2),
+  },
+
   seller: {
     allowNull: false,
+    type: DataTypes.STRING,
+  },
+
+  dairy: {
+    allowNull: true,
     type: DataTypes.STRING,
   },
 
@@ -110,6 +126,80 @@ const CalvesSchema = {
     allowNull: true,
     type: DataTypes.DATE,
     field: 'death_date',
+  },
+
+  shippedOutDate: {
+    allowNull: true,
+    type: DataTypes.DATE,
+    field: 'shipped_out_date',
+  },
+
+  shippedTo: {
+    allowNull: true,
+    type: DataTypes.STRING,
+    field: 'shipped_to',
+  },
+
+  proteinLevel: {
+    allowNull: true,
+    type: DataTypes.DECIMAL(8,2),
+    field: 'protein_level',
+  },
+
+  proteinTest: {
+    allowNull: true,
+    type: DataTypes.STRING,
+    field: 'protein_test',
+  },
+
+  backTag: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('originalID')
+    },
+    set(value) {
+      this.setDataValue('originalID', value)
+    }
+  },
+
+  dateIn: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('placedDate')
+    },
+    set(value) {
+      this.setDataValue('placedDate', value)
+    }
+  },
+
+  purchasePrice: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('price')
+    },
+    set(value) {
+      this.setDataValue('price', value)
+    }
+  },
+
+  daysOnFeed: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      const startValue = this.getDataValue('placedDate')
+      const rawPre = Number(this.getDataValue('preDaysOnFeed') || 0)
+      const pre = Number.isFinite(rawPre) ? Math.max(0, rawPre) : 0
+      if (!startValue) return pre
+
+      const start = new Date(startValue)
+      if (Number.isNaN(start.getTime())) return pre
+
+      const now = new Date()
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const placedDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+      const diff = Math.floor((today.getTime() - placedDay.getTime()) / (1000 * 60 * 60 * 24))
+      const elapsed = Math.max(0, diff) + 1
+      return elapsed + pre
+    }
   }
 }
 
@@ -120,6 +210,11 @@ class Calves extends Model {
         this.hasMany(models.CalfLoads, {
           foreignKey: 'calfID',
           as: 'calfLoads'
+        })
+
+        this.hasMany(models.CalfMovementHistory, {
+            foreignKey: 'calfID',
+            as: 'movementHistory'
         })
 
         this.belongsTo(models.Ranches, {

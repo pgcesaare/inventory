@@ -8,7 +8,33 @@ class LoadsService {
   }
 
   async findOne(id) {
-    return await model.Loads.findByPk(id)
+    const load = await model.Loads.findByPk(id, {
+      include: [
+        { model: model.Ranches, as: 'origin' },
+        { model: model.Ranches, as: 'destination' },
+        {
+          model: model.CalfLoads,
+          as: 'load',
+          include: [{ model: model.Calves, as: 'calf' }]
+        }
+      ]
+    })
+
+    if (!load) return null
+
+    const data = load.toJSON()
+    return {
+      ...data,
+      headCount: data.load?.length || 0,
+      shippedOutDate: data.departureDate || null,
+      shippedTo: data.destination?.name || data.destinationName || null,
+      calves: (data.load || []).map((item) => ({
+        id: item.calf?.id,
+        primaryID: item.calf?.primaryID || null,
+        EID: item.calf?.EID || null,
+        status: item.calf?.status || null
+      }))
+    }
   }
 
   async update(id, changes) {
@@ -35,7 +61,9 @@ class LoadsService {
       const data = load.toJSON()
       return {
         ...data,
-        headCount: data.load?.length || 0
+        headCount: data.load?.length || 0,
+        shippedOutDate: data.departureDate || null,
+        shippedTo: data.destination?.name || data.destinationName || null
       }
     })
 
@@ -47,20 +75,38 @@ class LoadsService {
     primaryIDs = [],
     originRanchID,
     destinationRanchID,
+    destinationName,
     departureDate,
     arrivalDate,
-    notes
+    notes,
+    trucking
   }) {
     const t = await sequelize.transaction()
 
     try {
+      const destinationRanchIdValue = destinationRanchID ? Number(destinationRanchID) : null
+      const customDestination = String(destinationName || '').trim() || null
+
+      if (!destinationRanchIdValue && !customDestination) {
+        throw new Error('Destination ranch or custom destination is required')
+      }
+
       // Create load
+      let destinationLabel = customDestination
+
+      if (destinationRanchIdValue) {
+        const destinationRanch = await model.Ranches.findByPk(destinationRanchIdValue, { transaction: t })
+        destinationLabel = destinationRanch?.name || destinationLabel
+      }
+
       const load = await model.Loads.create({
         originRanchID,
-        destinationRanchID,
+        destinationRanchID: destinationRanchIdValue,
+        destinationName: destinationLabel,
         departureDate,
         arrivalDate,
-        notes
+        notes,
+        trucking
       }, { transaction: t })
 
       // If no filters → do NOT modify calves
@@ -86,8 +132,10 @@ class LoadsService {
           calves.map(calf =>
             model.Calves.update(
               {
-                currentRanchID: destinationRanchID,
-                status: "shipped"
+                currentRanchID: destinationRanchIdValue || calf.currentRanchID,
+                status: "feeding",
+                shippedOutDate: departureDate || null,
+                shippedTo: destinationLabel
               },
               { where: { id: calf.id }, transaction: t }
             )
@@ -101,6 +149,20 @@ class LoadsService {
         }))
 
         await model.CalfLoads.bulkCreate(historyEntries, { transaction: t })
+
+        const movementEntries = calves.map(calf => ({
+          calfID: calf.id,
+          loadID: load.id,
+          movementType: 'load_transfer',
+          eventDate: departureDate || new Date(),
+          fromRanchID: originRanchID || calf.currentRanchID || null,
+          toRanchID: destinationRanchIdValue || null,
+          fromStatus: calf.status || 'feeding',
+          toStatus: 'feeding',
+          notes: notes || trucking || 'Transferred by load'
+        }))
+
+        await model.CalfMovementHistory.bulkCreate(movementEntries, { transaction: t })
       }
 
       await t.commit()

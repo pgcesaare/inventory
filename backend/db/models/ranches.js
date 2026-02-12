@@ -31,6 +31,11 @@ const RanchesSchema = {
     type: DataTypes.STRING,
     unique: false,
   },
+  manager: {
+    allowNull: true,
+    type: DataTypes.STRING,
+    unique: false,
+  },
   color: {
     allowNull: true,
     type: DataTypes.STRING,
@@ -58,6 +63,14 @@ class Ranches extends Model {
     this.hasMany(models.Calves, {
             foreignKey: 'originRanchID',
             as: 'originCalves'
+        })
+    this.hasMany(models.CalfMovementHistory, {
+            foreignKey: 'fromRanchID',
+            as: 'movementsFrom'
+        })
+    this.hasMany(models.CalfMovementHistory, {
+            foreignKey: 'toRanchID',
+            as: 'movementsTo'
         })
 
     }

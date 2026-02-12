@@ -5,10 +5,20 @@
 
 body {
   font-family: "Manrope";
+  background-color: var(--background);
+  color: var(--primary-text);
+  transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
 }
 
 
 :root {
+  --background: hsl(210 20% 98%);
+  --surface: hsl(0 0% 100%);
+  --primary-text: hsl(220 30% 10%);
+  --secondary-text: hsl(220 20% 35%);
+  --primary-border: hsl(210 25% 75%);
+  --divisory-line: hsl(220 14% 90%);
+  --action-blue: hsl(211 100% 50%);
   --sidebar: hsl(210 20% 94%);                /* Fondo más marcado, gris-azulado claro */
   --sidebar-foreground: hsl(220 30% 10%);     /* Texto oscuro, nítido */
   --sidebar-primary: hsl(210 80% 65%);        /* Azul más vivo (casi Tailwind blue-400) */
@@ -19,7 +29,30 @@ body {
   --sidebar-ring: hsl(210 100% 40%);          /* Azul intenso para focus */
 }
 
+.dark {
+  --background: hsl(220 19% 12%);
+  --surface: hsl(220 18% 16%);
+  --primary-text: hsl(210 25% 94%);
+  --secondary-text: hsl(214 16% 74%);
+  --primary-border: hsl(220 15% 28%);
+  --divisory-line: hsl(220 14% 24%);
+  --action-blue: hsl(210 100% 63%);
+  --sidebar: hsl(220 18% 14%);
+  --sidebar-foreground: hsl(210 25% 94%);
+  --sidebar-primary: hsl(210 88% 60%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(220 15% 22%);
+  --sidebar-accent-foreground: hsl(210 25% 94%);
+  --sidebar-border: hsl(220 15% 30%);
+  --sidebar-ring: hsl(210 100% 63%);
+}
+
 @theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-primary-text: var(--primary-text);
+  --color-secondary-text: var(--secondary-text);
+  --color-action-blue: var(--action-blue);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -28,4 +61,85 @@ body {
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@theme {
+  --color-primary: var(--primary-text);
+  --color-primary-border: var(--primary-border);
+  --color-divisory-line: var(--divisory-line);
+  --color-secondary: var(--secondary-text);
+
+      /*font*/
+    --font-sans: Manrope, system-ui, sans-serif;
+
+    /*title h1*/
+    --text-title-h1: 3rem;
+    --text-title-h1--line-height: 1.2;
+    --text-title-h1--font-weight: 800;
+
+    /*title h2*/
+    --text-title-h2: 2rem;
+    --text-title-h2--line-height: 1.2;
+    --text-title-h2--font-weight: 700;
+
+    /*subtitle h3*/
+    --text-title-h3: 1.5rem;
+    --text-title-h3--line-height: 1.2;
+    --text-title-h2--font-weight: 600;
+
+    /*principal text*/
+    --text-principal-text: 1rem;
+    --text-principal-text--line-height: 1.2;
+    --text-principal-text--font-weight: 400;
+
+    /*secondary text*/
+    --text-secondary-text: 0.8rem;
+    --text-secondary-text--line-height: 1.2;
+    --text-secondary-text--font-weight: 500;
+
+    /*text-button*/
+    --text-button: 1rem;
+    --text-button--line-height: 1.2;
+    --text-button--font-weight: 600;
+
+    /*bullets*/
+    --text-bullets: 0.95rem;
+    --text-bullets--line-height: 1.2;
+    --text-bullets--font-weight: 300;
+}
+
+.bold {
+  font-weight: 600;
+}
+
+/* Dark-mode compatibility for existing utility-heavy components */
+.dark .bg-white {
+  background-color: var(--surface) !important;
+}
+
+.dark .border-gray-200,
+.dark .border-gray-300 {
+  border-color: var(--primary-border) !important;
+}
+
+.dark .text-gray-900,
+.dark .text-gray-700,
+.dark .text-gray-600,
+.dark .text-gray-500,
+.dark .text-gray-400 {
+  color: var(--secondary-text) !important;
+}
+
+.dark .bg-gray-50,
+.dark .bg-gray-100,
+.dark .bg-gray-200 {
+  background-color: hsl(220 16% 20%) !important;
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: hsl(220 15% 18%);
+  color: var(--primary-text);
+  border-color: var(--primary-border);
 }

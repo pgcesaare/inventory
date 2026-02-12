@@ -9,6 +9,58 @@ const router = express.Router()
 
 const service = new CalvesService()
 
+const normalizeIncomingCalfPayload = (body, { forceCreationFields = false } = {}) => {
+  const payload = { ...body }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'backTag')) {
+    payload.originalID = payload.backTag
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'dateIn')) {
+    payload.placedDate = payload.dateIn
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'purchasePrice')) {
+    payload.price = payload.purchasePrice
+  }
+
+  delete payload.backTag
+  delete payload.dateIn
+  delete payload.purchasePrice
+  delete payload.daysOnFeed
+
+  if (forceCreationFields) {
+    payload.status = 'feeding'
+  }
+
+  Object.keys(payload).forEach((key) => {
+    if (payload[key] === undefined) {
+      delete payload[key]
+    }
+  })
+
+  return payload
+}
+
+const normalizeDateField = (value) => {
+  if (value === undefined || value === null || value === "") return null
+
+  let date
+  if (typeof value === 'number') {
+    const d = XLSX.SSF.parse_date_code(value)
+    if (!d) throw new Error('Invalid Excel serial date')
+    date = moment.utc({ year: d.y, month: d.m - 1, day: d.d })
+  } else if (typeof value === 'string') {
+    date = moment.utc(value, ['MM/DD/YYYY', 'YYYY-MM-DD', moment.ISO_8601], true)
+  } else if (value instanceof Date) {
+    date = moment.utc(value)
+  }
+
+  if (!date || !date.isValid()) {
+    throw new Error('Invalid date')
+  }
+
+  return date.startOf('day').toISOString()
+}
+
 router.get('/',
   async (req, res, next) => {
     try {
@@ -38,6 +90,28 @@ router.get('/inventory/:id', async (req, res, next) => {
   }
 })
 
+router.get('/manage/:id', async (req, res, next) => {
+  try {
+    const calves = await service.findManageByRanch(req.params.id)
+    res.json(calves)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.get('/:id/movement-history',
+  validatorHandler(getCalvesSchema, 'params'),
+  async (req, res, next) => {
+    try {
+      const { id } = req.params
+      const history = await service.getMovementHistory(id)
+      res.json(history)
+    } catch (error) {
+      next(error)
+    }
+  }
+)
+
 
 router.get('/:id',
   validatorHandler(getCalvesSchema, 'params'),
@@ -56,28 +130,11 @@ router.post('/',
   validatorHandler(createCalvesSchema, 'body'),
   async (req, res, next) => {
     try {
-      const body = req.body
+      const body = normalizeIncomingCalfPayload(req.body, { forceCreationFields: true })
 
-      if (body.placedDate !== undefined && body.placedDate !== null) {
-        let date;
-
-        // Si viene como número (Excel serial)
-        if (typeof body.placedDate === 'number') {
-          const d = XLSX.SSF.parse_date_code(body.placedDate);
-          if (!d) throw new Error('Invalid Excel serial date');
-          date = moment.utc({ year: d.y, month: d.m - 1, day: d.d });
-        }
-        // Si viene como string
-        else if (typeof body.placedDate === 'string') {
-          date = moment.utc(body.placedDate, ['MM/DD/YYYY','YYYY-MM-DD', moment.ISO_8601], true);
-        }
-
-        if (!date || !date.isValid()) {
-          throw new Error('Invalid date');
-        }
-
-        body.placedDate = date.startOf('day').toISOString();
-      }
+      body.placedDate = normalizeDateField(body.placedDate)
+      body.deathDate = normalizeDateField(body.deathDate)
+      body.shippedOutDate = normalizeDateField(body.shippedOutDate)
 
       const newCalf = await service.create(body)
       res.status(201).json(newCalf)
@@ -94,7 +151,10 @@ router.patch('/:id',
   async (req, res, next) => {
     try {
       const { id } = req.params
-      const body = req.body
+      const body = normalizeIncomingCalfPayload(req.body)
+      if (body.placedDate !== undefined) body.placedDate = normalizeDateField(body.placedDate)
+      if (body.deathDate !== undefined) body.deathDate = normalizeDateField(body.deathDate)
+      if (body.shippedOutDate !== undefined) body.shippedOutDate = normalizeDateField(body.shippedOutDate)
       res.status(201).json(await service.update(id, body))
     } catch (error) {
       next(error)
