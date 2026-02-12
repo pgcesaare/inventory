@@ -179,6 +179,7 @@ const AddCalves = () => {
   const [singleLoading, setSingleLoading] = useState(false)
   const [singleMessage, setSingleMessage] = useState("")
   const [singleMessageTone, setSingleMessageTone] = useState("idle")
+  const [singleErrors, setSingleErrors] = useState({})
 
   const [groupForm, setGroupForm] = useState({
     count: "10",
@@ -200,6 +201,7 @@ const AddCalves = () => {
   })
   const [groupLoading, setGroupLoading] = useState(false)
   const [groupResult, setGroupResult] = useState({ created: 0, failed: 0, errors: [] })
+  const [groupErrors, setGroupErrors] = useState({})
 
   useEffect(() => {
     if (!token || !id || ranch?.id === Number(id)) return
@@ -384,11 +386,19 @@ const AddCalves = () => {
       setSingleMessage("")
       setSingleMessageTone("idle")
     }
+    if (singleErrors[key]) {
+      setSingleErrors((prev) => {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+    }
     setSingleForm((prev) => ({ ...prev, [key]: value }))
   }
 
   const handleResetSingleForm = () => {
     setSingleForm(SINGLE_FORM_INITIAL)
+    setSingleErrors({})
     setSingleMessage("")
     setSingleMessageTone("idle")
   }
@@ -415,21 +425,24 @@ const AddCalves = () => {
       preDaysOnFeed: parseInteger(singleForm.preDaysOnFeed) ?? 0,
     }
 
-    if (
-      !payload.primaryID ||
-      !payload.EID ||
-      !payload.dateIn ||
-      !payload.breed ||
-      !payload.sex ||
-      !payload.seller
-    ) {
-      setSingleMessage("Complete all required fields before creating the calf.")
-      setSingleMessageTone("error")
+    const nextErrors = {}
+    if (!payload.primaryID) nextErrors.primaryID = "Visual Tag is required."
+    if (!payload.EID) nextErrors.EID = "EID is required."
+    if (!payload.dateIn) nextErrors.dateIn = "Date In is required."
+    if (!payload.breed) nextErrors.breed = "Breed is required."
+    if (!payload.sex) nextErrors.sex = "Sex is required."
+    if (!payload.seller) nextErrors.seller = "Seller is required."
+
+    if (Object.keys(nextErrors).length > 0) {
+      setSingleErrors(nextErrors)
+      setSingleMessage("")
+      setSingleMessageTone("idle")
       return
     }
 
     try {
       setSingleLoading(true)
+      setSingleErrors({})
       await createCalf(payload, token)
       setSingleMessage(`Calf ${payload.primaryID} created successfully.`)
       setSingleMessageTone("success")
@@ -443,6 +456,13 @@ const AddCalves = () => {
   }
 
   const handleGroupChange = (key, value) => {
+    if (groupErrors[key]) {
+      setGroupErrors((prev) => {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+    }
     setGroupForm((prev) => ({ ...prev, [key]: value }))
   }
 
@@ -453,33 +473,28 @@ const AddCalves = () => {
     const startNumber = parseInteger(groupForm.startNumber) ?? 1
     const padLength = parseInteger(groupForm.padLength) ?? 3
 
-    if (!count || count < 1 || count > 1000) {
-      setGroupResult({ created: 0, failed: 0, errors: [{ rowNumber: "-", message: "Count must be between 1 and 1000." }] })
-      return
-    }
-
-    if (
-      !cleanText(groupForm.tagPrefix) ||
-      !cleanText(groupForm.breed) ||
-      !cleanText(groupForm.seller)
-    ) {
-      setGroupResult({ created: 0, failed: 0, errors: [{ rowNumber: "-", message: "Complete required fields: Tag Prefix, Breed and Seller." }] })
-      return
-    }
+    const nextErrors = {}
+    if (!count || count < 1 || count > 1000) nextErrors.count = "Count must be between 1 and 1000."
+    if (!cleanText(groupForm.tagPrefix)) nextErrors.tagPrefix = "Tag Prefix is required."
+    if (!cleanText(groupForm.breed)) nextErrors.breed = "Breed is required."
+    if (!cleanText(groupForm.seller)) nextErrors.seller = "Seller is required."
 
     const sex = normalizeSex(groupForm.sex)
     if (!sex) {
-      setGroupResult({ created: 0, failed: 0, errors: [{ rowNumber: "-", message: "Sex is invalid." }] })
-      return
+      nextErrors.sex = "Sex is invalid."
     }
 
     if (!cleanText(groupForm.eidPrefix)) {
-      setGroupResult({ created: 0, failed: 0, errors: [{ rowNumber: "-", message: "EID Prefix is required." }] })
-      return
+      nextErrors.eidPrefix = "EID Prefix is required."
     }
 
     if (!normalizeDate(groupForm.dateIn)) {
-      setGroupResult({ created: 0, failed: 0, errors: [{ rowNumber: "-", message: "Date In is required." }] })
+      nextErrors.dateIn = "Date In is required."
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setGroupErrors(nextErrors)
+      setGroupResult({ created: 0, failed: 0, errors: [] })
       return
     }
 
@@ -518,6 +533,7 @@ const AddCalves = () => {
 
     try {
       setGroupLoading(true)
+      setGroupErrors({})
 
       for (const row of rows) {
         try {
@@ -663,6 +679,7 @@ const AddCalves = () => {
                   </button>
                 )}
               </div>
+              {singleErrors.primaryID && <p className="mt-1 text-xs text-red-600">{singleErrors.primaryID}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">EID<RequiredMark /></label>
@@ -674,6 +691,7 @@ const AddCalves = () => {
                   </button>
                 )}
               </div>
+              {singleErrors.EID && <p className="mt-1 text-xs text-red-600">{singleErrors.EID}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Back Tag</label>
@@ -696,6 +714,7 @@ const AddCalves = () => {
                   </button>
                 )}
               </div>
+              {singleErrors.dateIn && <p className="mt-1 text-xs text-red-600">{singleErrors.dateIn}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Breed<RequiredMark /></label>
@@ -707,6 +726,7 @@ const AddCalves = () => {
                   </button>
                 )}
               </div>
+              {singleErrors.breed && <p className="mt-1 text-xs text-red-600">{singleErrors.breed}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Sex<RequiredMark /></label>
@@ -715,6 +735,7 @@ const AddCalves = () => {
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
+              {singleErrors.sex && <p className="mt-1 text-xs text-red-600">{singleErrors.sex}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Seller<RequiredMark /></label>
@@ -726,6 +747,7 @@ const AddCalves = () => {
                   </button>
                 )}
               </div>
+              {singleErrors.seller && <p className="mt-1 text-xs text-red-600">{singleErrors.seller}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Weight</label>
@@ -837,10 +859,12 @@ const AddCalves = () => {
             <div>
               <label className="text-xs font-semibold text-secondary">Count<RequiredMark /></label>
               <input className={fieldClass} value={groupForm.count} onChange={(e) => handleGroupChange("count", e.target.value)} />
+              {groupErrors.count && <p className="mt-1 text-xs text-red-600">{groupErrors.count}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Tag Prefix<RequiredMark /></label>
               <input className={fieldClass} value={groupForm.tagPrefix} onChange={(e) => handleGroupChange("tagPrefix", e.target.value)} />
+              {groupErrors.tagPrefix && <p className="mt-1 text-xs text-red-600">{groupErrors.tagPrefix}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Back Tag Prefix</label>
@@ -857,14 +881,17 @@ const AddCalves = () => {
             <div>
               <label className="text-xs font-semibold text-secondary">EID Prefix<RequiredMark /></label>
               <input className={fieldClass} value={groupForm.eidPrefix} onChange={(e) => handleGroupChange("eidPrefix", e.target.value)} />
+              {groupErrors.eidPrefix && <p className="mt-1 text-xs text-red-600">{groupErrors.eidPrefix}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Date In<RequiredMark /></label>
               <input type="date" className={fieldClass} value={groupForm.dateIn} onChange={(e) => handleGroupChange("dateIn", e.target.value)} />
+              {groupErrors.dateIn && <p className="mt-1 text-xs text-red-600">{groupErrors.dateIn}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Breed<RequiredMark /></label>
               <input className={fieldClass} value={groupForm.breed} onChange={(e) => handleGroupChange("breed", e.target.value)} />
+              {groupErrors.breed && <p className="mt-1 text-xs text-red-600">{groupErrors.breed}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Sex<RequiredMark /></label>
@@ -873,10 +900,12 @@ const AddCalves = () => {
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
+              {groupErrors.sex && <p className="mt-1 text-xs text-red-600">{groupErrors.sex}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Seller<RequiredMark /></label>
               <input className={fieldClass} value={groupForm.seller} onChange={(e) => handleGroupChange("seller", e.target.value)} />
+              {groupErrors.seller && <p className="mt-1 text-xs text-red-600">{groupErrors.seller}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Weight</label>
@@ -916,9 +945,6 @@ const AddCalves = () => {
               >
                 {groupLoading ? "Creating group..." : "Create group"}
               </button>
-              {groupResult.errors.length > 0 && (
-                <p className="text-sm text-red-600">{groupResult.errors[0].message}</p>
-              )}
             </div>
 
             {groupResult.failed > 0 && (

@@ -7,7 +7,7 @@ const toISODate = (date) => {
   return local.toISOString().slice(0, 10)
 }
 
-const DateFilterMenu = ({ dateFrom, dateTo, onChange, className = "" }) => {
+const DateFilterMenu = ({ dateFrom, dateTo, onChange, className = "", menuAlign = "left" }) => {
   const [open, setOpen] = useState(false)
   const rootRef = useRef(null)
 
@@ -72,7 +72,7 @@ const DateFilterMenu = ({ dateFrom, dateTo, onChange, className = "" }) => {
       </button>
 
       {open && (
-        <div className="absolute left-0 mt-2 z-30 w-[340px] max-w-[calc(100vw-2rem)] rounded-xl border border-primary-border/30 bg-white p-3 shadow-lg">
+        <div className={`absolute ${menuAlign === "right" ? "right-0 left-auto" : "left-0"} mt-2 z-30 w-[340px] max-w-[calc(100vw-2rem)] rounded-xl border border-primary-border/30 bg-surface p-3 shadow-lg`}>
           <div className="grid grid-cols-3 gap-2 mb-3">
             <button type="button" className="rounded-lg border border-primary-border/40 px-2 py-1.5 text-xs hover:bg-primary-border/10" onClick={applyToday}>Today</button>
             <button type="button" className="rounded-lg border border-primary-border/40 px-2 py-1.5 text-xs hover:bg-primary-border/10" onClick={applyThisWeek}>This week</button>

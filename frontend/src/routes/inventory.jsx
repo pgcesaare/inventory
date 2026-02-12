@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
-import { Search } from "lucide-react"
+import { Download, Search } from "lucide-react"
 import * as XLSX from "xlsx"
 import { saveAs } from "file-saver"
 import { useToken } from "../api/useToken"
@@ -894,9 +894,10 @@ const Inventory = () => {
                     </select>
                     <button
                       type="button"
-                      className="w-full rounded-xl border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
                       onClick={handleExportExcel}
                     >
+                      <Download className="h-3.5 w-3.5" />
                       Export Excel
                     </button>
                     <button

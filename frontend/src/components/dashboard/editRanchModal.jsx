@@ -73,7 +73,7 @@ const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
         <form onSubmit={handleSubmit} className="p-2 w-full h-full flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-primary-text mb-1">Name</label>
+              <label className="block text-sm font-semibold text-primary-text mb-1">Name <span className="text-red-600">*</span></label>
               <input
                 type="text"
                 value={formData.name}
@@ -84,7 +84,7 @@ const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-primary-text mb-1">Address</label>
+              <label className="block text-sm font-semibold text-primary-text mb-1">Address <span className="text-red-600">*</span></label>
               <input
                 type="text"
                 value={formData.address}
@@ -96,7 +96,7 @@ const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-primary-text mb-1">City</label>
+                <label className="block text-sm font-semibold text-primary-text mb-1">City <span className="text-red-600">*</span></label>
                 <input
                   type="text"
                   value={formData.city}
@@ -107,7 +107,7 @@ const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-primary-text mb-1">State</label>
+                <label className="block text-sm font-semibold text-primary-text mb-1">State <span className="text-red-600">*</span></label>
                 <input
                   type="text"
                   value={formData.state}
@@ -119,7 +119,7 @@ const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-primary-text mb-1">Manager</label>
+              <label className="block text-sm font-semibold text-primary-text mb-1">Manager <span className="text-red-600">*</span></label>
               <input
                 type="text"
                 value={formData.manager}

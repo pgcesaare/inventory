@@ -10,6 +10,7 @@ const BreedSellerFilterMenu = ({
   showBreed = true,
   showSeller = true,
   className = "",
+  menuAlign = "left",
 }) => {
   const [open, setOpen] = useState(false)
   const rootRef = useRef(null)
@@ -45,7 +46,7 @@ const BreedSellerFilterMenu = ({
       </button>
 
       {open && (
-        <div className="absolute left-0 mt-2 z-30 w-[340px] max-w-[calc(100vw-2rem)] rounded-xl border border-primary-border/30 bg-white p-3 shadow-lg">
+        <div className={`absolute ${menuAlign === "right" ? "right-0 left-auto" : "left-0"} mt-2 z-30 w-[340px] max-w-[calc(100vw-2rem)] rounded-xl border border-primary-border/30 bg-surface p-3 shadow-lg`}>
           <div className="space-y-3">
             {showBreed && (
               <div>

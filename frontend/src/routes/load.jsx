@@ -65,7 +65,7 @@ const Load = () => {
   return (
     <div className="w-full h-full bg-background">
       <div className="flex h-full w-full flex-col lg:flex-row">
-        <div className={`${isSlideOpen ? "lg:w-[46%]" : "lg:w-full"} h-full overflow-y-auto transition-all duration-200`}>
+        <div className={`${isSlideOpen ? "lg:w-[38%]" : "lg:w-full"} h-full overflow-y-auto transition-all duration-200`}>
           {!isLoads ? (
             <div className="mx-auto flex h-full w-full max-w-4xl flex-col items-start justify-center gap-4 px-6 py-10">
               <div className="inline-flex items-center gap-2 rounded-full border border-primary-border/40 bg-primary-border/10 px-3 py-1 text-xs font-medium text-primary-text">
@@ -90,7 +90,7 @@ const Load = () => {
         </div>
 
         {isSlideOpen && (
-          <div className="h-full border-l border-primary-border/30 lg:w-[54%]">
+          <div className="h-full border-l border-primary-border/30 lg:w-[62%] overflow-y-auto">
             <LoadSlideContainer
               title={selectedCreateLoad ? "Create Load Order" : `Load Details #${selectedLoad || ""}`}
               onClose={handleClose}

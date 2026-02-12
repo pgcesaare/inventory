@@ -3,8 +3,8 @@ import { getRanchById, getRanches } from '../api/ranches'
 import { useToken } from '../api/useToken'
 import { useAppContext } from '../context'
 import { RanchSwitcher } from './components/ranchSwitcher'
-import { NavLink, useParams } from 'react-router-dom'
-import { Container, FileClock, LayoutDashboard, PencilLine, Sheet, Truck } from 'lucide-react'
+import { NavLink, useLocation, useParams } from 'react-router-dom'
+import { Beef, ChevronDown, Container, FileClock, LayoutDashboard, PencilLine, Sheet, Truck } from 'lucide-react'
 
 import {
   Sidebar,
@@ -14,15 +14,20 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@components/ui/sidebar"
 
 
 export function AppSidebar() {
     
     const { id } = useParams()
+    const location = useLocation()
     const token = useToken()
     const { ranch, setRanch, ranches, setRanches } = useAppContext()
     const [ loading, setLoading ] =useState(true)
+    const [openCalvesMenu, setOpenCalvesMenu] = useState(false)
 
     useEffect(() => {
       if (token && id) {
@@ -41,6 +46,29 @@ export function AppSidebar() {
         fetchRanchData()
       }
     }, [id, token, setRanch, setRanches])
+
+    const calfItems = [
+      {
+        title: "Add Calves",
+        url: ranch?.id ? `/dashboard/ranch/${ranch.id}/add-calves` : "",
+        icon: Sheet,
+      },
+      {
+        title: "Manage Calves",
+        url: ranch?.id ? `/dashboard/ranch/${ranch.id}/inventory?mode=manage` : "",
+        icon: PencilLine,
+      },
+    ]
+
+    const isCalvesRoute = calfItems.some((item) =>
+      item.url && (location.pathname === item.url || location.pathname + location.search === item.url)
+    )
+
+    useEffect(() => {
+      if (isCalvesRoute) {
+        setOpenCalvesMenu(true)
+      }
+    }, [isCalvesRoute])
 
     if(loading) return null
     if(!ranch) return null
@@ -67,17 +95,7 @@ export function AppSidebar() {
         url: `/dashboard/ranch/${ranch.id}/loads`,
         icon: Truck,
       },
-      {
-        title: "Add Calves",
-        url: `/dashboard/ranch/${ranch.id}/add-calves`,
-        icon: Sheet,
-      },
-      {
-        title: "Manage Calves",
-        url: `/dashboard/ranch/${ranch.id}/inventory?mode=manage`,
-        icon: PencilLine,
-      },
-    ]    
+    ]
 
   return (
 
@@ -98,6 +116,31 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => setOpenCalvesMenu((prev) => !prev)}
+                  className="cursor-pointer"
+                  data-active={isCalvesRoute}
+                >
+                  <Beef />
+                  <span>Calves</span>
+                  <ChevronDown className={`ml-auto transition-transform ${openCalvesMenu ? "rotate-180" : ""}`} />
+                </SidebarMenuButton>
+                {openCalvesMenu && (
+                  <SidebarMenuSub>
+                    {calfItems.map((item) => (
+                      <SidebarMenuSubItem key={item.title}>
+                        <SidebarMenuSubButton asChild>
+                          <NavLink to={item.url}>
+                            <item.icon />
+                            <span>{item.title}</span>
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    ))}
+                  </SidebarMenuSub>
+                )}
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

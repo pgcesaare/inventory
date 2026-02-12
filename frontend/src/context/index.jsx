@@ -18,14 +18,42 @@ export const AppProvider = ({ children }) => {
   })
   const [ showCreateNewRanchPopup, setShowCreateNewRanchPopup ] = useState(false)
   const [ theme, setTheme ] = useState("light")
+  const [hasManualTheme, setHasManualTheme] = useState(false)
 
   useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)")
     const savedTheme = localStorage.getItem("theme")
-    const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
-    const initialTheme = savedTheme || (systemPrefersDark ? "dark" : "light")
 
-    setTheme(initialTheme)
-  }, [])
+    if (savedTheme === "dark" || savedTheme === "light") {
+      setTheme(savedTheme)
+      setHasManualTheme(true)
+    } else {
+      setTheme(media.matches ? "dark" : "light")
+      setHasManualTheme(false)
+    }
+
+    const applySystemTheme = () => {
+      setTheme(media.matches ? "dark" : "light")
+    }
+
+    if (typeof media.addEventListener === "function") {
+      const onChange = () => {
+        if (!hasManualTheme) {
+          applySystemTheme()
+        }
+      }
+      media.addEventListener("change", onChange)
+      return () => media.removeEventListener("change", onChange)
+    }
+
+    const onChange = () => {
+      if (!hasManualTheme) {
+        applySystemTheme()
+      }
+    }
+    media.addListener(onChange)
+    return () => media.removeListener(onChange)
+  }, [hasManualTheme])
 
   useEffect(() => {
     const root = document.documentElement
@@ -34,11 +62,15 @@ export const AppProvider = ({ children }) => {
     } else {
       root.classList.remove("dark")
     }
-    localStorage.setItem("theme", theme)
   }, [theme])
 
   const toggleTheme = () => {
-    setTheme((prev) => (prev === "dark" ? "light" : "dark"))
+    setTheme((prev) => {
+      const next = prev === "dark" ? "light" : "dark"
+      localStorage.setItem("theme", next)
+      return next
+    })
+    setHasManualTheme(true)
   }
 
   const value = {

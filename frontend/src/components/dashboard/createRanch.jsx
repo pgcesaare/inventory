@@ -108,7 +108,7 @@ const CreateNewRanch = () => {
               <div>
                 <Input
                   type="text"
-                  label="Name"
+                  label="Name *"
                   name="name"
                   placeholder="Enter ranch name"
                   onChange={(value) => handleChange("name", value)}
@@ -123,7 +123,7 @@ const CreateNewRanch = () => {
               <div>
                 <Input
                   type="text"
-                  label="Address"
+                  label="Address *"
                   name="address"
                   placeholder="Enter ranch address"
                   onChange={(value) => handleChange("address", value)}
@@ -140,7 +140,7 @@ const CreateNewRanch = () => {
                 <div>
                   <Input
                     type="text"
-                    label="City"
+                    label="City *"
                     name="city"
                     placeholder="Enter city"
                     onChange={(value) => handleChange("city", value)}
@@ -155,7 +155,7 @@ const CreateNewRanch = () => {
                 <div>
                   <Input
                     type="text"
-                    label="State"
+                    label="State *"
                     name="state"
                     placeholder="Enter state"
                     onChange={(value) => handleChange("state", value)}
@@ -172,7 +172,7 @@ const CreateNewRanch = () => {
               <div>
                 <Input
                   type="text"
-                  label="Manager"
+                  label="Manager *"
                   name="manager"
                   placeholder="Enter manager name"
                   onChange={(value) => handleChange("manager", value)}
