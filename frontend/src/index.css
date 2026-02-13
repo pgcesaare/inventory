@@ -27,6 +27,7 @@ body {
   --sidebar-accent-foreground: hsl(220 25% 12%); /* Texto sobre hover/acento */
   --sidebar-border: hsl(210 25% 75%);         /* Bordes más notorios */
   --sidebar-ring: hsl(210 100% 40%);          /* Azul intenso para focus */
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5' stroke='%2364748b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 .dark {
@@ -45,6 +46,7 @@ body {
   --sidebar-accent-foreground: hsl(210 25% 94%);
   --sidebar-border: hsl(220 15% 30%);
   --sidebar-ring: hsl(210 100% 63%);
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5' stroke='%23a8b2c2' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 @theme inline {
@@ -142,4 +144,28 @@ body {
   background-color: hsl(220 15% 18%);
   color: var(--primary-text);
   border-color: var(--primary-border);
+}
+
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  padding-right: 2.2rem;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 0.95rem 0.95rem;
+}
+
+select:focus-visible {
+  outline: none;
+}
+
+select::-ms-expand {
+  display: none;
+}
+
+select[multiple] {
+  background-image: none;
+  padding-right: 0.75rem;
 }

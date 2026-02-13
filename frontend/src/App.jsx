@@ -65,6 +65,16 @@ const AppRoutes = ({ isAuthenticated, ranchesReady, hasRanches }) => {
       ),
     },
     {
+      path: "/dashboard/ranch/:id/manage-calves",
+      element: (
+        ranchRouteGuard || <ProtectedTemplate
+          title="Manage calves"
+          isAuthenticated={isAuthenticated}>
+          <Inventory />
+        </ProtectedTemplate>
+      ),
+    },
+    {
       path: "/dashboard/ranch/:id/loads",
       element: (
         ranchRouteGuard || <ProtectedTemplate
@@ -154,7 +164,7 @@ function App() {
         <CreateNewRanch />
       }
       <FeedbackCenter />
-      <div className="fixed bottom-5 right-5 z-[100]">
+      <div className="fixed top-5 right-5 z-[100]">
         <ThemeToggle />
       </div>
     </BrowserRouter>

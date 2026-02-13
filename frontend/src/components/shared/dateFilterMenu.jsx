@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect } from "react"
 import { CalendarDays } from "lucide-react"
 import { formatDateMMDDYYYY } from "../../utils/dateFormat"
+import StyledDateInput from "./styledDateInput"
 
 const toISODate = (date) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
@@ -82,30 +83,33 @@ const DateFilterMenu = ({ dateFrom, dateTo, onChange, className = "", menuAlign 
           <div className="space-y-2">
             <div>
               <label className="text-[11px] font-semibold text-secondary uppercase tracking-wide">Single Date</label>
-              <input
-                type="date"
-                className="mt-1 w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs"
+              <StyledDateInput
+                className="mt-1"
+                inputClassName="h-[36px]"
                 value={dateFrom && dateFrom === dateTo ? dateFrom : ""}
                 onChange={(e) => setSingleDate(e.target.value)}
+                ariaLabel="Open single date picker"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[11px] font-semibold text-secondary uppercase tracking-wide">From</label>
-                <input
-                  type="date"
-                  className="mt-1 w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs"
+                <StyledDateInput
+                  className="mt-1"
+                  inputClassName="h-[36px]"
                   value={dateFrom || ""}
                   onChange={(e) => setRange(e.target.value, dateTo || "")}
+                  ariaLabel="Open from date picker"
                 />
               </div>
               <div>
                 <label className="text-[11px] font-semibold text-secondary uppercase tracking-wide">To</label>
-                <input
-                  type="date"
-                  className="mt-1 w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs"
+                <StyledDateInput
+                  className="mt-1"
+                  inputClassName="h-[36px]"
                   value={dateTo || ""}
                   onChange={(e) => setRange(dateFrom || "", e.target.value)}
+                  ariaLabel="Open to date picker"
                 />
               </div>
             </div>

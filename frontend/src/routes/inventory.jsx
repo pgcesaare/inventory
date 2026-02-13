@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
-import { useParams, useSearchParams } from "react-router-dom"
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { Download, Search, X } from "lucide-react"
 import * as XLSX from "xlsx"
 import { saveAs } from "file-saver"
 import { useToken } from "../api/useToken"
 import { getRanchById } from "../api/ranches"
-import { getInventoryByRanch, getManageCalvesByRanch, getCalfMovementHistory, updateCalf, deleteCalf } from "../api/calves"
+import { getInventoryByRanch, getManageCalvesByRanch, getCalfMovementHistory, updateCalf, deleteCalf, createCalf } from "../api/calves"
 import { useAppContext } from "../context"
 import { formatDateMMDDYYYY } from "../utils/dateFormat"
 import { isDateInDateRange } from "../utils/dateRange"
@@ -21,6 +21,8 @@ import { getWeightCategoryLabel, normalizeWeightCategories } from "../utils/weig
 const Inventory = () => {
 
     const { id } = useParams()
+    const location = useLocation()
+    const navigate = useNavigate()
     const [searchParams] = useSearchParams()
     const token = useToken()
     const { ranch, setRanch, confirmAction, showSuccess, showError } = useAppContext()
@@ -32,7 +34,14 @@ const Inventory = () => {
     const [loadingHistory, setLoadingHistory] = useState(false)
     const [isEditing, setIsEditing] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
-    const isManageMode = searchParams.get("mode") === "manage"
+    const isManageMode = location.pathname.endsWith("/manage-calves")
+
+    useEffect(() => {
+      if (!id) return
+      if (location.pathname.endsWith("/inventory") && searchParams.get("mode") === "manage") {
+        navigate(`/dashboard/ranch/${id}/manage-calves`, { replace: true })
+      }
+    }, [id, location.pathname, navigate, searchParams])
     const [selectedIds, setSelectedIds] = useState([])
     const [manageSearchMode, setManageSearchMode] = useState("single")
     const [tagSearch, setTagSearch] = useState("")
@@ -42,9 +51,13 @@ const Inventory = () => {
     const [manageStatus, setManageStatus] = useState("")
     const [dateFrom, setDateFrom] = useState("")
     const [dateTo, setDateTo] = useState("")
+    const [manageRowLimit, setManageRowLimit] = useState(15)
+    const [managePage, setManagePage] = useState(1)
     const [bulkField, setBulkField] = useState("purchasePrice")
     const [bulkValue, setBulkValue] = useState("")
     const [bulkLoading, setBulkLoading] = useState(false)
+    const [lastBulkChange, setLastBulkChange] = useState(null)
+    const [lastDeletedCalves, setLastDeletedCalves] = useState([])
     const [manageMessage, setManageMessage] = useState("")
     const [mainSearch, setMainSearch] = useState("")
     const [mainSearchMode, setMainSearchMode] = useState("single")
@@ -71,6 +84,14 @@ const Inventory = () => {
     const manageButtonBaseClass = "h-[36px] rounded-xl border px-2 py-1.5 text-xs font-medium transition-colors"
     const manageButtonSecondaryClass = `${manageButtonBaseClass} border-primary-border/40 text-primary-text hover:bg-primary-border/10`
     const manageButtonPrimaryClass = `${manageButtonBaseClass} border-action-blue/80 bg-action-blue text-white hover:bg-action-blue/90 disabled:opacity-60`
+    const hasUndoAction = (lastBulkChange?.rows?.length > 0) || lastDeletedCalves.length > 0
+    const bulkStatusOptions = [
+      { value: "feeding", label: "Feeding" },
+      { value: "alive", label: "Alive" },
+      { value: "shipped", label: "Shipped" },
+      { value: "sold", label: "Sold" },
+      { value: "dead", label: "Dead" },
+    ]
 
     useEffect(() => {
       if (!ranch && token && id) {
@@ -417,6 +438,44 @@ const Inventory = () => {
       ),
       [filteredManageCalves, manageSort, getManageStatusKey]
     )
+    const effectiveManageRowLimit = useMemo(() => {
+      const parsed = manageRowLimit === "" ? Number.NaN : Number(manageRowLimit)
+      const safePageSize = Number.isFinite(parsed)
+        ? Math.max(0, Math.min(1000, parsed))
+        : 15
+      return safePageSize === 0 ? Math.max(1, sortedManageCalves.length) : safePageSize
+    }, [manageRowLimit, sortedManageCalves.length])
+    const manageTotalPages = useMemo(() => {
+      if (effectiveManageRowLimit <= 0) return 1
+      return Math.max(1, Math.ceil(sortedManageCalves.length / effectiveManageRowLimit))
+    }, [sortedManageCalves.length, effectiveManageRowLimit])
+    const effectiveManagePage = useMemo(
+      () => Math.min(Math.max(managePage, 1), manageTotalPages),
+      [managePage, manageTotalPages]
+    )
+    const managePageStart = useMemo(
+      () => (sortedManageCalves.length === 0 ? 0 : (effectiveManagePage - 1) * effectiveManageRowLimit + 1),
+      [sortedManageCalves.length, effectiveManagePage, effectiveManageRowLimit]
+    )
+    const managePageEnd = useMemo(
+      () => Math.min(effectiveManagePage * effectiveManageRowLimit, sortedManageCalves.length),
+      [effectiveManagePage, effectiveManageRowLimit, sortedManageCalves.length]
+    )
+    const manageVisiblePageNumbers = useMemo(() => {
+      const windowSize = 5
+      const start = Math.max(1, effectiveManagePage - Math.floor(windowSize / 2))
+      const end = Math.min(manageTotalPages, start + windowSize - 1)
+      const adjustedStart = Math.max(1, end - windowSize + 1)
+      return Array.from({ length: end - adjustedStart + 1 }, (_, idx) => adjustedStart + idx)
+    }, [effectiveManagePage, manageTotalPages])
+    const visibleManageCalves = useMemo(
+      () => {
+        if (effectiveManageRowLimit <= 0) return []
+        const startIndex = (effectiveManagePage - 1) * effectiveManageRowLimit
+        return sortedManageCalves.slice(startIndex, startIndex + effectiveManageRowLimit)
+      },
+      [sortedManageCalves, effectiveManageRowLimit, effectiveManagePage]
+    )
     const sortedBreedSummaryRows = useMemo(
       () => sortRowsBy(breedSummaryRows, breedSummarySort),
       [breedSummaryRows, breedSummarySort]
@@ -457,6 +516,9 @@ const Inventory = () => {
       const allowed = new Set(filteredManageCalves.map((calf) => calf.id))
       setSelectedIds((prev) => prev.filter((idValue) => allowed.has(idValue)))
     }, [isManageMode, filteredManageCalves])
+    useEffect(() => {
+      setManagePage(1)
+    }, [filteredManageCalves, effectiveManageRowLimit, isManageMode])
 
     const handleRowClick = async (row) => {
       if (!token || !row?.id) return
@@ -644,7 +706,7 @@ const Inventory = () => {
 
     const applyBulkUpdate = async () => {
       if (!token || selectedIds.length === 0 || !bulkField) return
-      if (bulkField !== "sell" && (bulkValue === "" || bulkValue === null || bulkValue === undefined)) {
+      if (bulkValue === "" || bulkValue === null || bulkValue === undefined) {
         setManageMessage("Set a value before applying bulk edit.")
         return
       }
@@ -662,13 +724,17 @@ const Inventory = () => {
 
       let fieldToUpdate = bulkField
 
-      if (bulkField === "sell") {
-        fieldToUpdate = "status"
-        normalizedValue = "sold"
-      }
-
       if (fieldToUpdate === "status" || fieldToUpdate === "sex" || fieldToUpdate === "proteinTest") {
-        normalizedValue = String(bulkValue).toLowerCase()
+        const nextStatus = String(bulkValue).toLowerCase().trim()
+        if (fieldToUpdate === "status") {
+          if (nextStatus === "dead" || nextStatus === "deceased" || nextStatus === "deaseaced") {
+            normalizedValue = "deceased"
+          } else {
+            normalizedValue = nextStatus
+          }
+        } else {
+          normalizedValue = nextStatus
+        }
       }
 
       if (fieldToUpdate === "breed" || fieldToUpdate === "dairy" || fieldToUpdate === "seller" || fieldToUpdate === "shippedTo") {
@@ -677,6 +743,11 @@ const Inventory = () => {
 
       setBulkLoading(true)
       setManageMessage("")
+      const previousSnapshotById = new Map()
+      selectedIds.forEach((calfId) => {
+        const previous = calves.find((calf) => calf.id === calfId)
+        if (previous) previousSnapshotById.set(calfId, { ...previous })
+      })
 
       let updatedCount = 0
       let failedCount = 0
@@ -704,11 +775,145 @@ const Inventory = () => {
         }))
 
         setSelectedIds((prev) => prev.filter((idValue) => !updatedMap.has(idValue)))
+        if (updatedMap.size > 0) {
+          setLastBulkChange({
+            field: fieldToUpdate,
+            rows: [...updatedMap.keys()].map((calfId) => ({
+              id: calfId,
+              previous: previousSnapshotById.get(calfId) || null,
+            })),
+          })
+          setLastDeletedCalves([])
+        }
         if (failedCount > 0 && updatedCount === 0) {
           setManageMessage(`Bulk edit failed. Failed: ${failedCount}. Check backend logs or API error details.`)
         } else {
           setManageMessage(`Bulk edit complete. Updated: ${updatedCount}, Failed: ${failedCount}.`)
         }
+      } finally {
+        setBulkLoading(false)
+      }
+    }
+
+    const handleUndoBulkUpdate = async () => {
+      if (!token || bulkLoading || !lastBulkChange?.rows?.length) return
+
+      const confirmed = await confirmAction({
+        title: "Undo Bulk Edit",
+        message: `Undo last bulk change on ${lastBulkChange.rows.length} calves?`,
+        confirmText: "YES",
+        cancelText: "NO",
+      })
+      if (!confirmed) return
+
+      const field = lastBulkChange.field
+      const updatedMap = new Map()
+      let failedCount = 0
+
+      setBulkLoading(true)
+      setManageMessage("")
+      try {
+        for (const row of lastBulkChange.rows) {
+          try {
+            const previous = row.previous || {}
+            let revertValue
+
+            if (field === "purchasePrice") {
+              revertValue = previous.purchasePrice ?? previous.price ?? null
+            } else if (field === "status") {
+              const rawStatus = String(previous.status || "").toLowerCase().trim()
+              revertValue = rawStatus === "dead" ? "deceased" : (rawStatus || null)
+            } else {
+              revertValue = previous[field]
+              if (revertValue === undefined) revertValue = null
+            }
+
+            const updated = await updateCalf(row.id, { [field]: revertValue }, token)
+            updatedMap.set(row.id, updated)
+          } catch {
+            failedCount += 1
+          }
+        }
+
+        setCalves((prev) => prev.flatMap((calf) => {
+          const serverUpdated = updatedMap.get(calf.id)
+          if (!serverUpdated) return [calf]
+          return [{ ...calf, ...serverUpdated }]
+        }))
+
+        if (failedCount > 0) {
+          setManageMessage(`Undo complete with errors. Restored: ${updatedMap.size}, Failed: ${failedCount}.`)
+        } else {
+          setManageMessage(`Undo complete. Restored: ${updatedMap.size}.`)
+        }
+        showSuccess(`Undo complete. Restored: ${updatedMap.size}, Failed: ${failedCount}.`, "Undo")
+        setLastBulkChange(null)
+      } finally {
+        setBulkLoading(false)
+      }
+    }
+
+    const buildRecreatePayload = (calf) => {
+      const rawStatus = String(calf?.status || "feeding").toLowerCase().trim()
+      const payload = {
+        primaryID: calf?.primaryID || calf?.visualTag || "",
+        EID: calf?.EID || "",
+        backTag: calf?.backTag || calf?.originalID || "",
+        dateIn: calf?.dateIn || calf?.placedDate || "",
+        breed: calf?.breed || "",
+        sex: calf?.sex || "bull",
+        weight: calf?.weight,
+        purchasePrice: calf?.purchasePrice ?? calf?.price,
+        sellPrice: calf?.sellPrice,
+        seller: calf?.seller || "",
+        dairy: calf?.dairy,
+        status: rawStatus === "dead" ? "deceased" : rawStatus,
+        proteinLevel: calf?.proteinLevel,
+        proteinTest: calf?.proteinTest,
+        deathDate: calf?.deathDate,
+        shippedOutDate: calf?.shippedOutDate,
+        shippedTo: calf?.shippedTo,
+        preDaysOnFeed: calf?.preDaysOnFeed,
+        currentRanchID: calf?.currentRanchID,
+        originRanchID: calf?.originRanchID,
+      }
+      return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined))
+    }
+
+    const handleUndoDeletedCalves = async () => {
+      if (!token || bulkLoading || lastDeletedCalves.length === 0) return
+      const confirmed = await confirmAction({
+        title: "Undo Delete",
+        message: `Restore ${lastDeletedCalves.length} deleted calves?`,
+        confirmText: "YES",
+        cancelText: "NO",
+      })
+      if (!confirmed) return
+
+      let restoredCount = 0
+      let failedCount = 0
+      const restoredRows = []
+
+      setBulkLoading(true)
+      setManageMessage("")
+      try {
+        for (const calf of lastDeletedCalves) {
+          try {
+            const restored = await createCalf(buildRecreatePayload(calf), token)
+            restoredRows.push(restored)
+            restoredCount += 1
+          } catch {
+            failedCount += 1
+          }
+        }
+
+        if (restoredRows.length > 0) {
+          setCalves((prev) => [...restoredRows, ...prev])
+        }
+        setLastDeletedCalves([])
+        setLastBulkChange(null)
+        setManageMessage(`Undo delete complete. Restored: ${restoredCount}, Failed: ${failedCount}.`)
+        showSuccess(`Undo delete complete. Restored: ${restoredCount}, Failed: ${failedCount}.`, "Undo")
       } finally {
         setBulkLoading(false)
       }
@@ -727,6 +932,7 @@ const Inventory = () => {
 
       setBulkLoading(true)
       setManageMessage("")
+      const deletedCandidates = calves.filter((calf) => selectedIds.includes(calf.id))
 
       let deletedCount = 0
       let failedCount = 0
@@ -748,6 +954,8 @@ const Inventory = () => {
         if (deletedSet.size > 0) {
           setCalves((prev) => prev.filter((calf) => !deletedSet.has(calf.id)))
           setSelectedIds((prev) => prev.filter((idValue) => !deletedSet.has(idValue)))
+          setLastDeletedCalves(deletedCandidates.filter((calf) => deletedSet.has(calf.id)))
+          setLastBulkChange(null)
         }
 
         if (failedCount > 0 && deletedCount === 0) {
@@ -773,9 +981,12 @@ const Inventory = () => {
       if (!confirmed) return
 
       try {
+        const deletedSnapshot = calves.find((calf) => calf.id === selectedCalf.id)
         await deleteCalf(selectedCalf.id, token)
         setCalves((prev) => prev.filter((calf) => calf.id !== selectedCalf.id))
         setSelectedIds((prev) => prev.filter((idValue) => idValue !== selectedCalf.id))
+        setLastDeletedCalves(deletedSnapshot ? [deletedSnapshot] : [])
+        setLastBulkChange(null)
         closeDetailPanel()
         showSuccess(`Calf "${selectedCalf.visualTag || selectedCalf.id}" deleted successfully.`, "Deleted")
       } catch (error) {
@@ -812,11 +1023,11 @@ const Inventory = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-5 xl:grid-cols-[120px_1.2fr_260px_170px_100px] gap-2 rounded-xl border border-primary-border/20 bg-primary-border/5 p-3">
+            <div className="grid grid-cols-1 md:grid-cols-6 xl:grid-cols-[120px_1.2fr_240px_170px_90px_100px] gap-2 rounded-xl border border-primary-border/20 bg-primary-border/5 p-3">
               <div>
                 <label className="text-xs font-semibold text-secondary">Search Type</label>
                 <select
-                  className="w-full h-[36px] rounded-md border border-primary-border/40 px-2.5 py-1.5 text-xs"
+                  className="w-full h-[36px] rounded-xl border border-primary-border/40 px-2.5 py-1.5 text-xs"
                   value={manageSearchMode}
                   onChange={(e) => setManageSearchMode(e.target.value)}
                 >
@@ -831,7 +1042,7 @@ const Inventory = () => {
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-secondary" />
                   <input
-                    className="w-full h-[36px] rounded-md border border-primary-border/40 pl-8 pr-9 py-1.5 text-xs"
+                    className="w-full h-[36px] rounded-xl border border-primary-border/40 pl-8 pr-9 py-1.5 text-xs"
                     placeholder={
                       manageSearchMode === "multi"
                         ? "TAG-001, TAG-002, TAG-003"
@@ -889,6 +1100,24 @@ const Inventory = () => {
                   }}
                 />
               </div>
+              <div className="pt-[22px]">
+                <input
+                  type="number"
+                  max={1000}
+                  className="w-full h-[36px] rounded-xl border border-primary-border/40 px-2.5 py-1.5 text-xs"
+                  value={manageRowLimit}
+                  onChange={(e) => {
+                    const rawValue = e.target.value
+                    if (rawValue === "") {
+                      setManageRowLimit("")
+                      return
+                    }
+                    const nextValue = Number(rawValue)
+                    if (!Number.isFinite(nextValue)) return
+                    setManageRowLimit(Math.max(0, Math.min(1000, nextValue)))
+                  }}
+                />
+              </div>
               <div className="flex items-end">
                 <button
                   type="button"
@@ -900,6 +1129,8 @@ const Inventory = () => {
                     setManageStatus("")
                     setDateFrom("")
                     setDateTo("")
+                    setManageRowLimit(15)
+                    setManagePage(1)
                   }}
                   className={`w-full min-h-[40px] ${manageButtonSecondaryClass}`}
                 >
@@ -909,18 +1140,32 @@ const Inventory = () => {
             </div>
 
             <div className="rounded-xl border border-primary-border/20 bg-primary-border/5 p-3 pt-3">
-              <div className="grid grid-cols-1 md:grid-cols-[180px_1fr_220px_220px] gap-2 items-end">
+              <div
+                className={`grid grid-cols-1 gap-2 items-end ${
+                  hasUndoAction
+                    ? "md:grid-cols-[180px_1fr_180px_180px_180px]"
+                    : "md:grid-cols-[180px_1fr_1fr_1fr]"
+                }`}
+              >
                 <div>
                   <label className="text-xs font-semibold text-secondary">Field</label>
                   <select
                     className="w-full h-[36px] rounded-xl border border-primary-border/40 px-2.5 py-1.5 text-xs"
                     value={bulkField}
-                    onChange={(e) => setBulkField(e.target.value)}
+                    onChange={(e) => {
+                      const nextField = e.target.value
+                      setBulkField(nextField)
+                      if (nextField === "status") {
+                        setBulkValue("feeding")
+                      } else if (bulkValue === "feeding" || bulkValue === "alive" || bulkValue === "shipped" || bulkValue === "sold" || bulkValue === "dead") {
+                        setBulkValue("")
+                      }
+                    }}
                   >
                     <option value="purchasePrice">Purchase Price</option>
                     <option value="sellPrice">Sell Price</option>
-                    <option value="sell">Sell (Status)</option>
                     <option value="breed">Breed</option>
+                    <option value="seller">Seller</option>
                     <option value="status">Status</option>
                     <option value="deathDate">Death Date</option>
                     <option value="dairy">Dairy</option>
@@ -929,13 +1174,24 @@ const Inventory = () => {
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-secondary">New Value</label>
-                  <input
-                    type={bulkField === "deathDate" ? "date" : "text"}
-                    className="w-full h-[36px] rounded-xl border border-primary-border/40 px-2.5 py-1.5 text-xs"
-                    value={bulkField === "sell" ? "sold" : bulkValue}
-                    onChange={(e) => setBulkValue(e.target.value)}
-                    disabled={bulkField === "sell"}
-                  />
+                  {bulkField === "status" ? (
+                    <select
+                      className="w-full h-[36px] rounded-xl border border-primary-border/40 px-2.5 py-1.5 text-xs"
+                      value={bulkValue || "feeding"}
+                      onChange={(e) => setBulkValue(e.target.value)}
+                    >
+                      {bulkStatusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type={bulkField === "deathDate" ? "date" : "text"}
+                      className="w-full h-[36px] rounded-xl border border-primary-border/40 px-2.5 py-1.5 text-xs"
+                      value={bulkValue}
+                      onChange={(e) => setBulkValue(e.target.value)}
+                    />
+                  )}
                 </div>
                 <div>
                   <button
@@ -957,6 +1213,18 @@ const Inventory = () => {
                     {bulkLoading ? "Deleting..." : `Delete ${selectedIds.length} selected`}
                   </button>
                 </div>
+                {hasUndoAction && (
+                  <div>
+                    <button
+                      type="button"
+                      disabled={bulkLoading}
+                      onClick={lastDeletedCalves.length > 0 ? handleUndoDeletedCalves : handleUndoBulkUpdate}
+                      className={`w-full ${manageButtonSecondaryClass}`}
+                    >
+                      {lastDeletedCalves.length > 0 ? "Undo last delete" : "Undo last change"}
+                    </button>
+                  </div>
+                )}
               </div>
               <p className="mt-2 text-xs text-secondary">Bulk update runs over selected calves only.</p>
             </div>
@@ -987,7 +1255,7 @@ const Inventory = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedManageCalves.map((calf) => (
+                  {visibleManageCalves.map((calf) => (
                     <tr
                       key={calf.id}
                       className="border-t border-primary-border/20 hover:bg-primary-border/5 cursor-pointer"
@@ -1013,6 +1281,59 @@ const Inventory = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="flex flex-col gap-2 border border-primary-border/20 rounded-xl px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-secondary">
+                Showing {managePageStart}-{managePageEnd} of {sortedManageCalves.length}
+              </p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  className="rounded-lg border border-primary-border/40 px-2 py-1 text-xs disabled:opacity-50"
+                  onClick={() => setManagePage(1)}
+                  disabled={effectiveManagePage === 1}
+                >
+                  First
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-primary-border/40 px-2 py-1 text-xs disabled:opacity-50"
+                  onClick={() => setManagePage((prev) => Math.max(1, prev - 1))}
+                  disabled={effectiveManagePage === 1}
+                >
+                  Prev
+                </button>
+                {manageVisiblePageNumbers.map((pageNumber) => (
+                  <button
+                    key={`manage-page-${pageNumber}`}
+                    type="button"
+                    className={`rounded-lg border px-2 py-1 text-xs ${
+                      pageNumber === effectiveManagePage
+                        ? "border-action-blue/80 bg-action-blue text-white"
+                        : "border-primary-border/40 hover:bg-primary-border/10"
+                    }`}
+                    onClick={() => setManagePage(pageNumber)}
+                  >
+                    {pageNumber}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="rounded-lg border border-primary-border/40 px-2 py-1 text-xs disabled:opacity-50"
+                  onClick={() => setManagePage((prev) => Math.min(manageTotalPages, prev + 1))}
+                  disabled={effectiveManagePage === manageTotalPages}
+                >
+                  Next
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-primary-border/40 px-2 py-1 text-xs disabled:opacity-50"
+                  onClick={() => setManagePage(manageTotalPages)}
+                  disabled={effectiveManagePage === manageTotalPages}
+                >
+                  Last
+                </button>
+              </div>
             </div>
           </div>
         )}

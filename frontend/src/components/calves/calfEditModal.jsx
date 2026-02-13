@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { X } from "lucide-react"
+import StyledDateInput from "../shared/styledDateInput"
 
 const formatDateInput = (value) => {
   if (!value) return ""
@@ -100,7 +101,7 @@ const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false }) => 
           <div><label className="text-xs font-semibold text-secondary">Visual Tag</label><input className={fieldClass} value={form.primaryID} onChange={(e) => setField("primaryID", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">EID</label><input className={fieldClass} value={form.EID} onChange={(e) => setField("EID", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Back Tag</label><input className={fieldClass} value={form.backTag} onChange={(e) => setField("backTag", e.target.value)} /></div>
-          <div><label className="text-xs font-semibold text-secondary">Date In</label><input type="date" className={fieldClass} value={form.dateIn} onChange={(e) => setField("dateIn", e.target.value)} /></div>
+          <div><label className="text-xs font-semibold text-secondary">Date In</label><StyledDateInput inputClassName={fieldClass} value={form.dateIn} onChange={(e) => setField("dateIn", e.target.value)} ariaLabel="Open date in picker" /></div>
           <div><label className="text-xs font-semibold text-secondary">Breed</label><input className={fieldClass} value={form.breed} onChange={(e) => setField("breed", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Sex</label><input className={fieldClass} value={form.sex} onChange={(e) => setField("sex", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Weight</label><input className={fieldClass} value={form.weight} onChange={(e) => setField("weight", e.target.value)} /></div>
@@ -111,8 +112,8 @@ const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false }) => 
           <div><label className="text-xs font-semibold text-secondary">Status</label><input className={fieldClass} value={form.status} onChange={(e) => setField("status", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Protein Level</label><input className={fieldClass} value={form.proteinLevel} onChange={(e) => setField("proteinLevel", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Protein Test</label><input className={fieldClass} value={form.proteinTest} onChange={(e) => setField("proteinTest", e.target.value)} /></div>
-          <div><label className="text-xs font-semibold text-secondary">Death Date</label><input type="date" className={fieldClass} value={form.deathDate} onChange={(e) => setField("deathDate", e.target.value)} /></div>
-          <div><label className="text-xs font-semibold text-secondary">Shipped Out Date</label><input type="date" className={fieldClass} value={form.shippedOutDate} onChange={(e) => setField("shippedOutDate", e.target.value)} /></div>
+          <div><label className="text-xs font-semibold text-secondary">Death Date</label><StyledDateInput inputClassName={fieldClass} value={form.deathDate} onChange={(e) => setField("deathDate", e.target.value)} ariaLabel="Open death date picker" /></div>
+          <div><label className="text-xs font-semibold text-secondary">Shipped Out Date</label><StyledDateInput inputClassName={fieldClass} value={form.shippedOutDate} onChange={(e) => setField("shippedOutDate", e.target.value)} ariaLabel="Open shipped out date picker" /></div>
           <div><label className="text-xs font-semibold text-secondary">Shipped To</label><input className={fieldClass} value={form.shippedTo} onChange={(e) => setField("shippedTo", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Pre-Days-On-Feed</label><input className={fieldClass} value={form.preDaysOnFeed} onChange={(e) => setField("preDaysOnFeed", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Days On Feed (calculated)</label><input className={`${fieldClass} bg-primary-border/10`} value={calculateDaysOnFeed({ ...calf, preDaysOnFeed: form.preDaysOnFeed })} readOnly disabled /></div>

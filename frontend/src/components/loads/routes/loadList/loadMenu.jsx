@@ -122,9 +122,9 @@ const LoadMenu = ({ data, resultsCount, onOpen }) => {
         <div className="flex items-center gap-2">
           <span className="text-xs text-secondary">{resultsCount} result(s)</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           <LocationFilterMenu
-            className="w-[170px]"
+            className="w-full sm:w-[170px]"
             destination={selected.destination || ""}
             city={selected.city || ""}
             state={selected.state || ""}
@@ -136,7 +136,7 @@ const LoadMenu = ({ data, resultsCount, onOpen }) => {
             }
           />
           <DateFilterMenu
-            className="w-[170px]"
+            className="w-full sm:w-[170px]"
             dateFrom={selected.dateFrom || selected.date || ""}
             dateTo={selected.dateTo || selected.date || ""}
             onChange={({ from, to }) => {
@@ -163,12 +163,14 @@ const LoadMenu = ({ data, resultsCount, onOpen }) => {
                   dateTo: "",
                 }))
               }
-              className="h-full min-h-[40px] rounded-xl border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
+              className="h-full min-h-[40px] w-full sm:w-auto rounded-xl border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
             >
               Reset
             </button>
           )}
-          <CreateLoadBtn onOpen={onOpen} />
+          <div className="w-full sm:w-auto sm:shrink-0">
+            <CreateLoadBtn onOpen={onOpen} />
+          </div>
         </div>
       </div>
     </div>

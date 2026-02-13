@@ -9,6 +9,7 @@ import { formatDateMMDDYYYY } from "../../../../utils/dateFormat"
 import DateFilterMenu from "../../../shared/dateFilterMenu"
 import BreedSellerFilterMenu from "../../../shared/breedSellerFilterMenu"
 import SearchOptionsMenu from "../../../shared/searchOptionsMenu"
+import StyledDateInput from "../../../shared/styledDateInput"
 import { useAppContext } from "../../../../context"
 import { isDateInDateRange } from "../../../../utils/dateRange"
 
@@ -36,7 +37,7 @@ const CreateLoad = ({ onCreated }) => {
 
   const [destinations, setDestinations] = useState([])
   const [inventoryCalves, setInventoryCalves] = useState([])
-  const [selectedPrimaryIDs, setSelectedPrimaryIDs] = useState([])
+  const [selectedCalfIDs, setSelectedCalfIDs] = useState([])
   const [searchMode, setSearchMode] = useState("single")
   const [searchMatchMode, setSearchMatchMode] = useState("exact")
   const [searchField, setSearchField] = useState("all")
@@ -189,11 +190,11 @@ const CreateLoad = ({ onCreated }) => {
     return total / filteredCalves.length
   }, [filteredCalves])
   const avgDaysOnFeedSelected = useMemo(() => {
-    const selectedCalves = inventoryCalves.filter((calf) => selectedPrimaryIDs.includes(calf.primaryID))
+    const selectedCalves = inventoryCalves.filter((calf) => selectedCalfIDs.includes(calf.id))
     if (selectedCalves.length === 0) return 0
     const total = selectedCalves.reduce((sum, calf) => sum + calculateDaysOnFeed(calf), 0)
     return total / selectedCalves.length
-  }, [inventoryCalves, selectedPrimaryIDs])
+  }, [inventoryCalves, selectedCalfIDs])
   const safePickerLimit = useMemo(() => {
     const parsed = pickerRowLimit === "" ? Number.NaN : Number(pickerRowLimit)
     if (!Number.isFinite(parsed)) return 15
@@ -232,12 +233,13 @@ const CreateLoad = ({ onCreated }) => {
   }, [pickerPage, pickerTotalPages])
   useEffect(() => {
     if (!pickAllRef.current) return
-    const visibleIds = visiblePickerCalves.map((calf) => calf.primaryID).filter(Boolean)
-    const selectedVisibleCount = visibleIds.filter((idValue) => selectedPrimaryIDs.includes(idValue)).length
-    pickAllRef.current.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length
-  }, [visiblePickerCalves, selectedPrimaryIDs])
+    const filteredIds = sortedCalves.map((calf) => calf.id).filter(Boolean)
+    const selectedFilteredCount = filteredIds.filter((idValue) => selectedCalfIDs.includes(idValue)).length
+    pickAllRef.current.indeterminate = selectedFilteredCount > 0 && selectedFilteredCount < filteredIds.length
+  }, [sortedCalves, selectedCalfIDs])
 
-  const selectedCount = selectedPrimaryIDs.length
+  const selectedCount = selectedCalfIDs.length
+  const quickPickerLimits = [100, 150, 200, 230]
 
   const setField = (key, value) => {
     setFieldErrors((prev) => {
@@ -255,25 +257,24 @@ const CreateLoad = ({ onCreated }) => {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  const toggleSelectCalf = (primaryID) => {
-    setSelectedPrimaryIDs((prev) => {
-      const exists = prev.includes(primaryID)
-      if (exists) return prev.filter((idValue) => idValue !== primaryID)
-      return [...prev, primaryID]
+  const toggleSelectCalf = (calfID) => {
+    setSelectedCalfIDs((prev) => {
+      const exists = prev.includes(calfID)
+      if (exists) return prev.filter((idValue) => idValue !== calfID)
+      return [...prev, calfID]
     })
     if (pickerError) setPickerError("")
   }
-  const toggleSelectAllVisible = () => {
-    const visibleIds = visiblePickerCalves.map((calf) => calf.primaryID).filter(Boolean)
-    if (visibleIds.length === 0) return
+  const toggleSelectAllFiltered = () => {
+    const filteredIds = sortedCalves.map((calf) => calf.id).filter(Boolean)
+    if (filteredIds.length === 0) return
 
-    const allVisibleSelected = visibleIds.every((idValue) => selectedPrimaryIDs.includes(idValue))
-    setSelectedPrimaryIDs((prev) => {
-      if (allVisibleSelected) {
-        return prev.filter((idValue) => !visibleIds.includes(idValue))
-      }
-      return [...new Set([...prev, ...visibleIds])]
-    })
+    const allFilteredSelected = filteredIds.every((idValue) => selectedCalfIDs.includes(idValue))
+    setSelectedCalfIDs((prev) => (
+      allFilteredSelected
+        ? prev.filter((idValue) => !filteredIds.includes(idValue))
+        : [...new Set([...prev, ...filteredIds])]
+    ))
     if (pickerError) setPickerError("")
   }
 
@@ -304,13 +305,13 @@ const CreateLoad = ({ onCreated }) => {
       nextErrors.departureDate = "Shipped Out Date is required."
     }
 
-    if (selectedPrimaryIDs.length === 0) {
+    if (selectedCalfIDs.length === 0) {
       setPickerError("Select at least 1 calf for the load.")
     } else {
       setPickerError("")
     }
 
-    if (Object.keys(nextErrors).length > 0 || selectedPrimaryIDs.length === 0) {
+    if (Object.keys(nextErrors).length > 0 || selectedCalfIDs.length === 0) {
       setFieldErrors(nextErrors)
       setMessage("")
       const firstInvalidElement =
@@ -318,7 +319,7 @@ const CreateLoad = ({ onCreated }) => {
           ? destinationRef.current
           : nextErrors.departureDate
             ? departureDateRef.current
-            : selectedPrimaryIDs.length === 0
+            : selectedCalfIDs.length === 0
               ? calfPickerRef.current
               : null
 
@@ -334,6 +335,10 @@ const CreateLoad = ({ onCreated }) => {
       setFieldErrors({})
       setPickerError("")
 
+      const selectedCalves = inventoryCalves.filter((calf) => selectedCalfIDs.includes(calf.id))
+      const primaryIDs = [...new Set(selectedCalves.map((calf) => String(calf.primaryID || "").trim()).filter(Boolean))]
+      const eids = [...new Set(selectedCalves.map((calf) => String(calf.EID || "").trim()).filter(Boolean))]
+
       await createLoad(
         {
           originRanchID: originRanchId,
@@ -343,13 +348,14 @@ const CreateLoad = ({ onCreated }) => {
           arrivalDate: form.arrivalDate || null,
           trucking: form.trucking || null,
           notes: form.notes || null,
-          primaryIDs: selectedPrimaryIDs,
+          primaryIDs,
+          eids,
         },
         token
       )
 
-      setMessage(`Load created with ${selectedPrimaryIDs.length} calves.`)
-      showSuccess(`Load created with ${selectedPrimaryIDs.length} calves.`, "Created")
+      setMessage(`Load created with ${selectedCalfIDs.length} calves.`)
+      showSuccess(`Load created with ${selectedCalfIDs.length} calves.`, "Created")
       if (onCreated) onCreated()
     } catch (error) {
       setMessage(error?.response?.data?.message || "Error creating load.")
@@ -399,11 +405,11 @@ const CreateLoad = ({ onCreated }) => {
           </div>
           <div ref={departureDateRef} className="scroll-mt-24">
             <label className="text-xs font-semibold text-secondary">Shipped Out Date<RequiredMark /></label>
-            <input
-              type="date"
-              className={fieldClass}
+            <StyledDateInput
+              inputClassName={fieldClass}
               value={form.departureDate}
               onChange={(e) => setField("departureDate", e.target.value)}
+              ariaLabel="Open shipped out date picker"
             />
             {fieldErrors.departureDate && (
               <p className="mt-1 text-xs text-red-600">{fieldErrors.departureDate}</p>
@@ -411,11 +417,11 @@ const CreateLoad = ({ onCreated }) => {
           </div>
           <div>
             <label className="text-xs font-semibold text-secondary">Arrival Date</label>
-            <input
-              type="date"
-              className={fieldClass}
+            <StyledDateInput
+              inputClassName={fieldClass}
               value={form.arrivalDate}
               onChange={(e) => setField("arrivalDate", e.target.value)}
+              ariaLabel="Open arrival date picker"
             />
           </div>
           <div>
@@ -571,6 +577,21 @@ const CreateLoad = ({ onCreated }) => {
             </button>
           </div>
         </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-secondary">Quick row limits:</span>
+          {quickPickerLimits.map((limit) => (
+            <button
+              key={`quick-limit-${limit}`}
+              type="button"
+              className={`${pickerButtonClass} h-[30px] px-2.5 ${
+                Number(pickerRowLimit) === limit ? "border-action-blue/70 bg-action-blue/10 text-action-blue" : ""
+              }`}
+              onClick={() => setPickerRowLimit(limit)}
+            >
+              {limit}
+            </button>
+          ))}
+        </div>
 
         {pickerError && <p className="mt-2 text-xs text-red-600">{pickerError}</p>}
 
@@ -584,10 +605,10 @@ const CreateLoad = ({ onCreated }) => {
                     <input
                       ref={pickAllRef}
                       type="checkbox"
-                      onChange={toggleSelectAllVisible}
+                      onChange={toggleSelectAllFiltered}
                       checked={
-                        visiblePickerCalves.length > 0 &&
-                        visiblePickerCalves.every((calf) => selectedPrimaryIDs.includes(calf.primaryID))
+                        sortedCalves.length > 0 &&
+                        sortedCalves.every((calf) => selectedCalfIDs.includes(calf.id))
                       }
                     />
                     <span>Pick</span>
@@ -602,21 +623,21 @@ const CreateLoad = ({ onCreated }) => {
             </thead>
             <tbody>
               {visiblePickerCalves.map((calf) => {
-                const isSelected = selectedPrimaryIDs.includes(calf.primaryID)
+                const isSelected = selectedCalfIDs.includes(calf.id)
                 return (
                   <tr
                     key={calf.id}
                     className={`border-t border-primary-border/20 text-sm transition-colors ${
                       isSelected ? "bg-action-blue/5" : "hover:bg-primary-border/5"
                     }`}
-                    onClick={() => toggleSelectCalf(calf.primaryID)}
+                    onClick={() => toggleSelectCalf(calf.id)}
                   >
                     <td className="px-3 py-2">
                       <input
                         type="checkbox"
                         checked={isSelected}
                         onClick={(event) => event.stopPropagation()}
-                        onChange={() => toggleSelectCalf(calf.primaryID)}
+                        onChange={() => toggleSelectCalf(calf.id)}
                       />
                     </td>
                     <td className="px-3 py-2 truncate">{calf.primaryID || "-"}</td>

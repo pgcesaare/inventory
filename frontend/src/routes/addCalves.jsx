@@ -14,6 +14,7 @@ import SummaryCards from "../components/shared/summaryCards"
 import SearchOptionsMenu from "../components/shared/searchOptionsMenu"
 import BreedSellerFilterMenu from "../components/shared/breedSellerFilterMenu"
 import DateFilterMenu from "../components/shared/dateFilterMenu"
+import StyledDateInput from "../components/shared/styledDateInput"
 import { RanchPageSkeleton } from "../components/shared/loadingSkeletons"
 import { isDateInDateRange } from "../utils/dateRange"
 
@@ -270,6 +271,7 @@ const AddCalves = () => {
   const [result, setResult] = useState({ created: 0, failed: 0, errors: [] })
   const [duplicateAlerts, setDuplicateAlerts] = useState([])
   const [bulkStep, setBulkStep] = useState("upload")
+  const [hasValidatedFile, setHasValidatedFile] = useState(false)
   const [selectedBulkRowNumbers, setSelectedBulkRowNumbers] = useState([])
   const [lastDeletedRows, setLastDeletedRows] = useState([])
   const [uploadReportRows, setUploadReportRows] = useState([])
@@ -312,6 +314,9 @@ const AddCalves = () => {
   const [groupResult, setGroupResult] = useState({ created: 0, failed: 0, errors: [] })
   const [groupErrors, setGroupErrors] = useState({})
   const existingIdentifierRef = useRef({ tag: new Set(), eid: new Set(), backTag: new Set() })
+  const validatedRowsRef = useRef(null)
+  const duplicateAlertsRef = useRef(null)
+  const [shouldScrollToValidated, setShouldScrollToValidated] = useState(false)
 
   useEffect(() => {
     if (!token || !id || ranch?.id === Number(id)) return
@@ -521,6 +526,7 @@ const getSearchPlaceholder = (mode, field) => {
 
   const handleFileSelect = (selectedFile) => {
     setFile(selectedFile)
+    setHasValidatedFile(false)
     setResult({ created: 0, failed: 0, errors: [] })
     setDuplicateAlerts([])
     setSelectedBulkRowNumbers([])
@@ -531,6 +537,7 @@ const getSearchPlaceholder = (mode, field) => {
 
   const clearFile = () => {
     setFile(null)
+    setHasValidatedFile(false)
     setValidRows([])
     setInvalidRows([])
     setResult({ created: 0, failed: 0, errors: [] })
@@ -544,6 +551,7 @@ const getSearchPlaceholder = (mode, field) => {
   const parseExcel = async () => {
     if (!file || !id) return
     setIsParsing(true)
+    setHasValidatedFile(false)
 
     try {
       const buffer = await file.arrayBuffer()
@@ -645,7 +653,8 @@ const getSearchPlaceholder = (mode, field) => {
       setInvalidRows(nextInvalidRows)
       setDuplicateAlerts(nextDuplicateAlerts)
       setSelectedBulkRowNumbers([])
-      setBulkStep(nextInvalidRows.length > 0 ? "fix" : "review")
+      setBulkStep("validate")
+      setHasValidatedFile(true)
     } catch (error) {
       console.error("Error parsing file:", error)
       setValidRows([])
@@ -653,10 +662,29 @@ const getSearchPlaceholder = (mode, field) => {
       setDuplicateAlerts([])
       setSelectedBulkRowNumbers([])
       setBulkStep("upload")
+      setHasValidatedFile(true)
     } finally {
       setIsParsing(false)
     }
   }
+
+  const handleValidateFile = async () => {
+    setShouldScrollToValidated(true)
+    await parseExcel()
+  }
+
+  useEffect(() => {
+    if (!shouldScrollToValidated || isParsing || mode !== "bulk") return
+    const timer = setTimeout(() => {
+      if (duplicateAlerts.length > 0) {
+        duplicateAlertsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      } else {
+        validatedRowsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      }
+      setShouldScrollToValidated(false)
+    }, 80)
+    return () => clearTimeout(timer)
+  }, [shouldScrollToValidated, isParsing, mode, validRows.length, invalidRows.length, duplicateAlerts.length])
 
   const handleCreateBulk = async () => {
     if (!token || validRows.length === 0 || isSubmitting) return
@@ -666,7 +694,11 @@ const getSearchPlaceholder = (mode, field) => {
       confirmText: "YES",
       cancelText: "NO",
     })
-    if (!confirmed) return
+    if (!confirmed) {
+      setBulkStep("validate")
+      return
+    }
+    setBulkStep("create")
     setIsSubmitting(true)
 
     let created = 0
@@ -745,6 +777,66 @@ const getSearchPlaceholder = (mode, field) => {
     setSelectedBulkRowNumbers([])
   }
 
+  const handleRemoveDuplicateRows = async () => {
+    if (duplicateAlerts.length === 0) return
+    const normalizeIdentifier = (value) => String(value || "").toLowerCase().trim().replace(/[\s-]+/g, "")
+    const countByTag = new Map()
+    const countByEid = new Map()
+    const countByBackTag = new Map()
+
+    validRows.forEach((row) => {
+      const payload = row?.payload || {}
+      const tagKey = normalizeIdentifier(payload.primaryID)
+      const eidKey = normalizeIdentifier(payload.EID)
+      const backTagKey = normalizeIdentifier(payload.backTag)
+      if (tagKey) countByTag.set(tagKey, (countByTag.get(tagKey) || 0) + 1)
+      if (eidKey) countByEid.set(eidKey, (countByEid.get(eidKey) || 0) + 1)
+      if (backTagKey) countByBackTag.set(backTagKey, (countByBackTag.get(backTagKey) || 0) + 1)
+    })
+
+    const duplicatedTagKeys = new Set([...countByTag.entries()].filter(([, count]) => count > 1).map(([key]) => key))
+    const duplicatedEidKeys = new Set([...countByEid.entries()].filter(([, count]) => count > 1).map(([key]) => key))
+    const duplicatedBackTagKeys = new Set([...countByBackTag.entries()].filter(([, count]) => count > 1).map(([key]) => key))
+
+    const duplicateAlertRows = new Set(
+      duplicateAlerts
+        .map((item) => Number(item.rowNumber))
+        .filter(Number.isFinite)
+    )
+
+    const duplicateRowNumbers = validRows
+      .filter((row) => {
+        const payload = row?.payload || {}
+        const tagKey = normalizeIdentifier(payload.primaryID)
+        const eidKey = normalizeIdentifier(payload.EID)
+        const backTagKey = normalizeIdentifier(payload.backTag)
+        const inFileDuplicate =
+          (tagKey && duplicatedTagKeys.has(tagKey)) ||
+          (eidKey && duplicatedEidKeys.has(eidKey)) ||
+          (backTagKey && duplicatedBackTagKeys.has(backTagKey))
+        return inFileDuplicate || duplicateAlertRows.has(Number(row.rowNumber))
+      })
+      .map((row) => Number(row.rowNumber))
+
+    if (duplicateRowNumbers.length === 0) return
+    const duplicateSet = new Set(duplicateRowNumbers)
+
+    const confirmed = await confirmAction({
+      title: "Remove Duplicates",
+      message: `Remove ${duplicateSet.size} duplicate rows from this upload?`,
+      confirmText: "YES",
+      cancelText: "NO",
+    })
+    if (!confirmed) return
+
+    const removed = validRows.filter((row) => duplicateSet.has(Number(row.rowNumber)))
+    setValidRows((prev) => prev.filter((row) => !duplicateSet.has(Number(row.rowNumber))))
+    setSelectedBulkRowNumbers((prev) => prev.filter((rowNumber) => !duplicateSet.has(Number(rowNumber))))
+    setLastDeletedRows((prev) => [...prev, ...removed].sort((a, b) => Number(a.rowNumber) - Number(b.rowNumber)))
+    setDuplicateAlerts([])
+    showSuccess(`Removed ${removed.length} duplicate rows.`, "Duplicates Removed")
+  }
+
   const undoDeleteSelectedRows = () => {
     if (lastDeletedRows.length === 0) return
     setValidRows((prev) => (
@@ -767,7 +859,7 @@ const getSearchPlaceholder = (mode, field) => {
       return { ...row, payload: next }
     }))
     showSuccess("Auto-fix applied to valid rows.", "Auto-fix")
-    setBulkStep("review")
+    setBulkStep("create")
   }
 
   const updateValidRowField = (rowNumber, key, value) => {
@@ -800,6 +892,31 @@ const getSearchPlaceholder = (mode, field) => {
     saveAs(
       new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
       `calves-upload-report-${new Date().toISOString().slice(0, 10)}.xlsx`
+    )
+  }
+
+  const downloadDuplicateAlerts = () => {
+    if (duplicateAlerts.length === 0) return
+    const rows = duplicateAlerts.map((item) => {
+      const message = String(item.message || "")
+      let tagType = ""
+      if (/visual tag/i.test(message)) tagType = "Visual Tag"
+      else if (/\beid\b/i.test(message)) tagType = "EID"
+      else if (/back tag/i.test(message)) tagType = "Back Tag"
+
+      return {
+        tagType,
+        value: message.match(/"([^"]+)"/)?.[1] || "",
+        message,
+      }
+    })
+    const worksheet = XLSX.utils.json_to_sheet(rows)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Duplicate Alerts")
+    const output = XLSX.write(workbook, { type: "array", bookType: "xlsx" })
+    saveAs(
+      new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+      `duplicate-alerts-${new Date().toISOString().slice(0, 10)}.xlsx`
     )
   }
 
@@ -981,6 +1098,16 @@ const getSearchPlaceholder = (mode, field) => {
 
   if (!ranch) return <RanchPageSkeleton />
 
+  const canValidateFile = Boolean(file) && !isParsing && !isSubmitting
+  const canCreateBulk = hasValidatedFile && validRows.length > 0 && !isSubmitting && !isParsing
+  const bulkNextStepMessage = !file
+    ? "Step 1: Upload your Excel file."
+    : !hasValidatedFile
+      ? "Step 2: Click Validate File to check rows before creating calves."
+      : validRows.length === 0
+        ? "No valid rows available. Fix errors or upload a different file."
+        : "Step 3: Click Create Calves."
+
   return (
     <div className="w-full max-w-full min-h-screen bg-background flex justify-center overflow-x-hidden px-4 md:px-6 py-10">
       <div className="w-full max-w-7xl min-w-0 overflow-x-hidden flex flex-col gap-6">
@@ -1025,12 +1152,11 @@ const getSearchPlaceholder = (mode, field) => {
           <>
             <div className="w-full min-w-0 rounded-2xl border border-primary-border/30 bg-white p-4 shadow-sm">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-secondary">Bulk Flow</p>
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                 {[
-                  { key: "upload", label: "1. Upload" },
-                  { key: "review", label: "2. Review" },
-                  { key: "fix", label: "3. Fix" },
-                  { key: "create", label: "4. Create" },
+                  { key: "upload", label: "1. Upload File" },
+                  { key: "validate", label: "2. Validate File" },
+                  { key: "create", label: "3. Create Calves" },
                 ].map((step) => (
                   <div
                     key={step.key}
@@ -1044,6 +1170,7 @@ const getSearchPlaceholder = (mode, field) => {
                   </div>
                 ))}
               </div>
+              <p className="mt-3 text-xs text-secondary">{bulkNextStepMessage}</p>
             </div>
 
             <DragAndDrop
@@ -1056,19 +1183,19 @@ const getSearchPlaceholder = (mode, field) => {
               <div className="w-full min-w-0 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={parseExcel}
-                  disabled={!file || isParsing || isSubmitting}
+                  onClick={handleValidateFile}
+                  disabled={!canValidateFile}
                   className={bulkBtnPrimary}
                 >
-                  {isParsing ? "Processing file..." : "Validate File"}
+                  {isParsing ? "Validating file..." : "Validate File"}
                 </button>
                 <button
                   type="button"
                   onClick={handleCreateBulk}
-                  disabled={validRows.length === 0 || isSubmitting || isParsing}
+                  disabled={!canCreateBulk}
                   className={bulkBtnSuccess}
                 >
-                  {isSubmitting ? "Creating calves..." : `Create ${validRows.length} calves`}
+                  {isSubmitting ? "Creating calves..." : `Create Calves (${validRows.length})`}
                 </button>
                 <button
                   type="button"
@@ -1109,14 +1236,6 @@ const getSearchPlaceholder = (mode, field) => {
                 >
                   Auto-fix
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setBulkStep("create")}
-                  disabled={validRows.length === 0}
-                  className={bulkBtnSecondary}
-                >
-                  Continue to Create
-                </button>
                 {uploadReportRows.length > 0 && (
                   <button
                     type="button"
@@ -1128,6 +1247,9 @@ const getSearchPlaceholder = (mode, field) => {
                   </button>
                 )}
               </div>
+              <p className="text-xs text-secondary">
+                Auto-fix standardizes valid rows only: trims IDs/text, normalizes breed casing, and normalizes sex/status values. It does not fix missing required fields.
+              </p>
             </div>
 
             {invalidRows.length > 0 && (
@@ -1147,8 +1269,29 @@ const getSearchPlaceholder = (mode, field) => {
             )}
 
             {duplicateAlerts.length > 0 && (
-              <div className="w-full min-w-0 overflow-x-hidden rounded-2xl border border-red-200 bg-red-50/80 p-4 break-words">
-                <h3 className="text-sm font-semibold text-red-700">Duplicate alerts</h3>
+              <div ref={duplicateAlertsRef} className="w-full min-w-0 overflow-x-hidden rounded-2xl border border-red-200 bg-red-50/80 p-4 break-words">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-red-700">Duplicate alerts</h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={downloadDuplicateAlerts}
+                      disabled={isParsing || isSubmitting || duplicateAlerts.length === 0}
+                      className={bulkBtnSecondary}
+                    >
+                      <Download className="h-4 w-4" />
+                      Export duplicates
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRemoveDuplicateRows}
+                      disabled={isParsing || isSubmitting}
+                      className={bulkBtnDanger}
+                    >
+                      Remove duplicate rows
+                    </button>
+                  </div>
+                </div>
                 <p className="mt-1 text-xs text-red-700">Duplicates are allowed and will still be uploaded.</p>
                 <ul className="mt-2 space-y-1 text-xs text-red-700">
                   {duplicateAlerts.slice(0, 15).map((item, idx) => (
@@ -1176,7 +1319,7 @@ const getSearchPlaceholder = (mode, field) => {
               </div>
             )}
 
-            <div className="w-full min-w-0 overflow-x-hidden">
+            <div ref={validatedRowsRef} className="w-full min-w-0 overflow-x-hidden">
               <MainDataTable
                 title="Valid rows preview"
                 rows={filteredPreviewRows}
@@ -1199,11 +1342,11 @@ const getSearchPlaceholder = (mode, field) => {
                   />
                 ),
                 dateIn: (row) => (
-                  <input
-                    type="date"
-                    className="w-full min-w-0 rounded-md border border-primary-border/30 px-2 py-1 text-xs"
+                  <StyledDateInput
+                    inputClassName="h-[30px] min-w-0 rounded-md border-primary-border/30 px-2 py-1 text-xs"
                     value={row.dateIn === "-" ? "" : row.dateIn}
                     onChange={(e) => updateValidRowField(row.rowNumber, "dateIn", e.target.value)}
+                    ariaLabel="Open row date picker"
                   />
                 ),
                 breed: (row) => (
@@ -1407,14 +1550,12 @@ const getSearchPlaceholder = (mode, field) => {
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Date In<RequiredMark /></label>
-              <div className="relative">
-                <input type="date" className={clearableInputClass} value={singleForm.dateIn} onChange={(e) => handleSingleChange("dateIn", e.target.value)} />
-                {singleForm.dateIn && (
-                  <button type="button" className={clearButtonClass} onClick={() => handleSingleChange("dateIn", "")}>
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
+              <StyledDateInput
+                inputClassName={clearableInputClass}
+                value={singleForm.dateIn}
+                onChange={(e) => handleSingleChange("dateIn", e.target.value)}
+                ariaLabel="Open single calf date picker"
+              />
               {singleErrors.dateIn && <p className="mt-1 text-xs text-red-600">{singleErrors.dateIn}</p>}
             </div>
             <div>
@@ -1585,7 +1726,12 @@ const getSearchPlaceholder = (mode, field) => {
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Date In<RequiredMark /></label>
-              <input type="date" className={fieldClass} value={groupForm.dateIn} onChange={(e) => handleGroupChange("dateIn", e.target.value)} />
+              <StyledDateInput
+                inputClassName={fieldClass}
+                value={groupForm.dateIn}
+                onChange={(e) => handleGroupChange("dateIn", e.target.value)}
+                ariaLabel="Open group date picker"
+              />
               {groupErrors.dateIn && <p className="mt-1 text-xs text-red-600">{groupErrors.dateIn}</p>}
             </div>
             <div>

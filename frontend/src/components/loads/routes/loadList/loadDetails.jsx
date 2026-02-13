@@ -8,6 +8,7 @@ import { useToken } from "../../../../api/useToken"
 import { useAppContext } from "../../../../context"
 import { getRanches } from "../../../../api/ranches"
 import { deleteLoad, updateLoad } from "../../../../api/loads"
+import StyledDateInput from "../../../shared/styledDateInput"
 
 dayjs.extend(utc)
 
@@ -412,20 +413,22 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
             </div>
             <div>
               <label className="text-[11px] font-semibold text-secondary uppercase tracking-wide">Shipped Out Date</label>
-              <input
-                type="date"
-                className="mt-1 w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs"
+              <StyledDateInput
+                className="mt-1"
+                inputClassName="h-[34px]"
                 value={editForm.departureDate}
                 onChange={(event) => setEditForm((prev) => ({ ...prev, departureDate: event.target.value }))}
+                ariaLabel="Open shipped out date picker"
               />
             </div>
             <div>
               <label className="text-[11px] font-semibold text-secondary uppercase tracking-wide">Arrival Date</label>
-              <input
-                type="date"
-                className="mt-1 w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs"
+              <StyledDateInput
+                className="mt-1"
+                inputClassName="h-[34px]"
                 value={editForm.arrivalDate}
                 onChange={(event) => setEditForm((prev) => ({ ...prev, arrivalDate: event.target.value }))}
+                ariaLabel="Open arrival date picker"
               />
             </div>
             <div>

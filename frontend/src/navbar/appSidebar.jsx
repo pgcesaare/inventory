@@ -55,7 +55,7 @@ export function AppSidebar() {
       },
       {
         title: "Manage Calves",
-        url: ranch?.id ? `/dashboard/ranch/${ranch.id}/inventory?mode=manage` : "",
+        url: ranch?.id ? `/dashboard/ranch/${ranch.id}/manage-calves` : "",
         icon: PencilLine,
       },
     ]

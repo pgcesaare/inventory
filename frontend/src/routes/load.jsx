@@ -7,6 +7,7 @@ import LoadDetails from "../components/loads/routes/loadList/loadDetails"
 import { getLoadById } from "../api/loads"
 import { useToken } from "../api/useToken"
 import { Truck } from "lucide-react"
+import { LoadDetailsSkeleton } from "../components/shared/loadingSkeletons"
 
 const Load = () => {
     const [selectedLoad, setSelectedLoad] = useState(null)
@@ -15,6 +16,7 @@ const Load = () => {
     const [isSlideOpen, setIsSlideOpen] = useState(false)
     const [isLoads, setIsLoads] = useState(true)
     const [refreshKey, setRefreshKey] = useState(0)
+    const [loadingSelectedLoad, setLoadingSelectedLoad] = useState(false)
     const token = useToken()
 
     useEffect(() => {
@@ -34,11 +36,14 @@ const Load = () => {
 
         const fetchLoad = async () => {
             try {
+                setLoadingSelectedLoad(true)
                 const data = await getLoadById(selectedLoad, token)
                 setSelectedLoadData(data)
             } catch (error) {
                 console.error("Error loading load details:", error)
                 setSelectedLoadData(null)
+            } finally {
+                setLoadingSelectedLoad(false)
             }
         }
 
@@ -50,6 +55,7 @@ const Load = () => {
         setSelectedLoad(null)
         setSelectedLoadData(null)
         setSelectedCreateLoad(false)
+        setLoadingSelectedLoad(false)
     }
 
     const handleCreateLoad = () => {
@@ -107,7 +113,11 @@ const Load = () => {
               onClose={handleClose}
             >
               <div className="p-4 md:p-5">
-                <LoadDetails load={selectedLoadData} onUpdated={handleUpdated} onDeleted={handleDeleted} />
+                {loadingSelectedLoad ? (
+                  <LoadDetailsSkeleton />
+                ) : (
+                  <LoadDetails load={selectedLoadData} onUpdated={handleUpdated} onDeleted={handleDeleted} />
+                )}
               </div>
             </LoadSlideContainer>
           </div>
