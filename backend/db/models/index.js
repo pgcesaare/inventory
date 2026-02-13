@@ -3,6 +3,7 @@ const { Ranches, RanchesSchema } = require('./ranches')
 const { Loads, LoadsSchema } = require('./loads')
 const { CalfLoads, calfLoadsSchema } = require('./calfLoads.model')
 const { CalfMovementHistory, CalfMovementHistorySchema } = require('./calfMovementHistory.model')
+const { RanchWeightCategories, RanchWeightCategoriesSchema } = require('./ranchWeightCategories.model')
 
 function setupModels(sequelize) {
 
@@ -11,12 +12,14 @@ function setupModels(sequelize) {
     Loads.init(LoadsSchema, Loads.config(sequelize))
     CalfLoads.init(calfLoadsSchema, CalfLoads.config(sequelize))
     CalfMovementHistory.init(CalfMovementHistorySchema, CalfMovementHistory.config(sequelize))
+    RanchWeightCategories.init(RanchWeightCategoriesSchema, RanchWeightCategories.config(sequelize))
 
     Calves.associate(sequelize.models)
     Ranches.associate(sequelize.models)
     Loads.associate(sequelize.models)
     CalfLoads.associate(sequelize.models)
     CalfMovementHistory.associate(sequelize.models)
+    RanchWeightCategories.associate(sequelize.models)
 
 }
 

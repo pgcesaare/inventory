@@ -43,9 +43,9 @@ const DragAndDrop = ({ onFileSelect, selectedFile, disabled = false }) => {
         </p>
 
         {selectedFile && (
-          <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-primary-border/40 px-3 py-1.5 text-xs text-primary-text">
+          <div className="mt-2 inline-flex max-w-full items-center gap-2 rounded-lg border border-primary-border/40 px-3 py-1.5 text-xs text-primary-text">
             <FileSpreadsheet className="h-4 w-4 text-action-blue" />
-            {selectedFile.name}
+            <span className="max-w-[min(80vw,520px)] truncate">{selectedFile.name}</span>
           </div>
         )}
       </div>

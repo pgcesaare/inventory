@@ -10,9 +10,12 @@ import NavbarLayout from "./navbar/components/navbarLayout";
 import { useAppContext } from "./context";
 import CreateNewRanch from "./components/dashboard/createRanch";
 import Loads from "./routes/load";
+import Settings from "./routes/settings";
 import ThemeToggle from "./components/themeToggle";
 import { useToken } from "./api/useToken";
 import { getRanches } from "./api/ranches";
+import FeedbackCenter from "./components/shared/feedbackCenter";
+import { AppBootSkeleton } from "./components/shared/loadingSkeletons";
 
 const ProtectedTemplate = ({ children, isAuthenticated, title }) => {
   if (!isAuthenticated) return <Navigate to="/" />;
@@ -25,13 +28,13 @@ const AppRoutes = ({ isAuthenticated, ranchesReady, hasRanches }) => {
   const dashboardElement = !isAuthenticated
     ? <Navigate to="/" />
     : !ranchesReady
-      ? <div>Loading ranches...</div>
+      ? <AppBootSkeleton />
       : <Dashboard />
 
   const ranchRouteGuard = !isAuthenticated
     ? <Navigate to="/" />
     : !ranchesReady
-      ? <div>Loading ranches...</div>
+      ? <AppBootSkeleton />
     : !hasRanches
       ? <Navigate to="/dashboard" />
       : null
@@ -68,6 +71,16 @@ const AppRoutes = ({ isAuthenticated, ranchesReady, hasRanches }) => {
           title="Load history"
           isAuthenticated={isAuthenticated}>
           <Loads />
+        </ProtectedTemplate>
+      ),
+    },
+    {
+      path: "/dashboard/ranch/:id/settings",
+      element: (
+        ranchRouteGuard || <ProtectedTemplate
+          title="Settings"
+          isAuthenticated={isAuthenticated}>
+          <Settings />
         </ProtectedTemplate>
       ),
     },
@@ -127,8 +140,8 @@ function App() {
     (Array.isArray(ranches) && ranches.length > 0) || Boolean(ranch?.id)
   const effectiveHasRanches = hasRanches || hasRanchesInContext
 
-  if (isLoading) return <div>Loading...</div>;
-  if (isAuthenticated && !ranchesReady) return <div>Loading ranches...</div>;
+  if (isLoading) return <AppBootSkeleton />;
+  if (isAuthenticated && !ranchesReady) return <AppBootSkeleton />;
 
   return (
     <BrowserRouter>
@@ -140,6 +153,7 @@ function App() {
       {showCreateNewRanchPopup && 
         <CreateNewRanch />
       }
+      <FeedbackCenter />
       <div className="fixed bottom-5 right-5 z-[100]">
         <ThemeToggle />
       </div>

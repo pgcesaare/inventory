@@ -1,7 +1,13 @@
+const { Op } = require('sequelize')
 const { sequelize, model } = require('../db/libs/sequelize')
 
 class LoadsService {
   constructor() {}
+
+  normalizeIdentifierList(values = []) {
+    if (!Array.isArray(values)) return []
+    return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))]
+  }
 
   async findAll() {
     return await model.Loads.findAll({ include: { all: true } })
@@ -32,20 +38,343 @@ class LoadsService {
         id: item.calf?.id,
         primaryID: item.calf?.primaryID || null,
         EID: item.calf?.EID || null,
-        status: item.calf?.status || null
+        originalID: item.calf?.originalID || null,
+        breed: item.calf?.breed || null,
+        sex: item.calf?.sex || null,
+        seller: item.calf?.seller || null,
+        status: item.calf?.status || null,
+        placedDate: item.calf?.placedDate || null,
+        price: item.calf?.price ?? null,
+        purchasePrice: item.calf?.price ?? null,
+        sellPrice: item.calf?.sellPrice ?? null,
+        deathDate: item.calf?.deathDate || null,
+        shippedOutDate: item.calf?.shippedOutDate || null,
+        shippedTo: item.calf?.shippedTo || null,
+        originRanchID: item.calf?.originRanchID ?? null,
+        currentRanchID: item.calf?.currentRanchID ?? null
       }))
     }
   }
 
   async update(id, changes) {
-    const load = await this.findOne(id)
-    return await load.update(changes)
+    const t = await sequelize.transaction()
+
+    try {
+      const load = await model.Loads.findByPk(id, {
+        include: [{
+          model: model.CalfLoads,
+          as: 'load',
+          include: [{ model: model.Calves, as: 'calf' }]
+        }],
+        transaction: t
+      })
+
+      if (!load) {
+        await t.rollback()
+        return null
+      }
+
+      const currentData = load.toJSON()
+      const hasPrimaryIDs = Object.prototype.hasOwnProperty.call(changes || {}, 'primaryIDs')
+      const hasEids = Object.prototype.hasOwnProperty.call(changes || {}, 'eids')
+      const hasCalfSelectionChanges = hasPrimaryIDs || hasEids
+
+      const primaryIDs = this.normalizeIdentifierList(changes?.primaryIDs)
+      const eids = this.normalizeIdentifierList(changes?.eids)
+      const originRanchID = changes?.originRanchID ?? currentData.originRanchID
+      const destinationRanchID = Object.prototype.hasOwnProperty.call(changes || {}, 'destinationRanchID')
+        ? (changes.destinationRanchID ? Number(changes.destinationRanchID) : null)
+        : (currentData.destinationRanchID ? Number(currentData.destinationRanchID) : null)
+      const customDestination = Object.prototype.hasOwnProperty.call(changes || {}, 'destinationName')
+        ? String(changes.destinationName || '').trim()
+        : String(currentData.destinationName || '').trim()
+
+      if (!destinationRanchID && !customDestination) {
+        throw new Error('Destination ranch or custom destination is required')
+      }
+
+      let destinationLabel = customDestination || currentData.destinationName || null
+      if (destinationRanchID) {
+        const destinationRanch = await model.Ranches.findByPk(destinationRanchID, { transaction: t })
+        destinationLabel = destinationRanch?.name || destinationLabel
+      }
+
+      const updatedFields = {
+        originRanchID,
+        destinationRanchID,
+        destinationName: destinationLabel,
+      }
+
+      if (Object.prototype.hasOwnProperty.call(changes || {}, 'departureDate')) {
+        updatedFields.departureDate = changes.departureDate || null
+      }
+      if (Object.prototype.hasOwnProperty.call(changes || {}, 'arrivalDate')) {
+        updatedFields.arrivalDate = changes.arrivalDate || null
+      }
+      if (Object.prototype.hasOwnProperty.call(changes || {}, 'notes')) {
+        updatedFields.notes = changes.notes || null
+      }
+      if (Object.prototype.hasOwnProperty.call(changes || {}, 'trucking')) {
+        updatedFields.trucking = changes.trucking || null
+      }
+
+      await load.update(updatedFields, { transaction: t })
+
+      const existingRows = currentData.load || []
+      const existingCalfIds = new Set(existingRows.map((row) => row.calfID).filter(Boolean))
+      let nextCalfIds = [...existingCalfIds]
+
+      if (hasCalfSelectionChanges) {
+        if (primaryIDs.length === 0 && eids.length === 0) {
+          nextCalfIds = []
+        } else {
+          const queryWhere = {}
+          if (primaryIDs.length > 0 && eids.length > 0) {
+            queryWhere[Op.or] = [
+              { primaryID: { [Op.in]: primaryIDs } },
+              { EID: { [Op.in]: eids } }
+            ]
+          } else if (primaryIDs.length > 0) {
+            queryWhere.primaryID = { [Op.in]: primaryIDs }
+          } else {
+            queryWhere.EID = { [Op.in]: eids }
+          }
+
+          const matchedCalves = await model.Calves.findAll({
+            where: queryWhere,
+            transaction: t
+          })
+
+          const allowedStatuses = new Set(['feeding', 'alive'])
+          const nextSet = new Set()
+          matchedCalves.forEach((calf) => {
+            const statusValue = String(calf.status || '').toLowerCase()
+            const alreadyInLoad = existingCalfIds.has(calf.id)
+            const availableFromOrigin = Number(calf.currentRanchID) === Number(originRanchID) && allowedStatuses.has(statusValue)
+            if (alreadyInLoad || availableFromOrigin) {
+              nextSet.add(calf.id)
+            }
+          })
+          nextCalfIds = [...nextSet]
+        }
+      }
+
+      const nextSet = new Set(nextCalfIds)
+      const removedCalfIds = [...existingCalfIds].filter((idValue) => !nextSet.has(idValue))
+      const addedCalfIds = nextCalfIds.filter((idValue) => !existingCalfIds.has(idValue))
+      const keptCalfIds = nextCalfIds.filter((idValue) => existingCalfIds.has(idValue))
+
+      if (removedCalfIds.length > 0) {
+        await model.CalfLoads.destroy({
+          where: {
+            loadID: load.id,
+            calfID: { [Op.in]: removedCalfIds }
+          },
+          transaction: t
+        })
+
+        await model.Calves.update(
+          {
+            currentRanchID: originRanchID || null,
+            status: 'feeding',
+            shippedOutDate: null,
+            shippedTo: null
+          },
+          {
+            where: { id: { [Op.in]: removedCalfIds } },
+            transaction: t
+          }
+        )
+
+        await model.CalfMovementHistory.bulkCreate(
+          removedCalfIds.map((calfID) => ({
+            calfID,
+            loadID: load.id,
+            movementType: 'status_change',
+            eventDate: updatedFields.departureDate || currentData.departureDate || new Date(),
+            fromRanchID: destinationRanchID || null,
+            toRanchID: originRanchID || null,
+            fromStatus: 'shipped',
+            toStatus: 'feeding',
+            notes: `Removed from load #${load.id} during edit`
+          })),
+          { transaction: t }
+        )
+      }
+
+      if (addedCalfIds.length > 0) {
+        await model.CalfLoads.bulkCreate(
+          addedCalfIds.map((calfID) => ({
+            calfID,
+            loadID: load.id
+          })),
+          { transaction: t }
+        )
+
+        const calvesBeforeUpdate = await model.Calves.findAll({
+          where: { id: { [Op.in]: addedCalfIds } },
+          transaction: t
+        })
+
+        const addUpdatePayload = {
+          status: 'shipped',
+          shippedOutDate: updatedFields.departureDate || currentData.departureDate || null,
+          shippedTo: destinationLabel || null
+        }
+        if (destinationRanchID) {
+          addUpdatePayload.currentRanchID = destinationRanchID
+        }
+
+        await model.Calves.update(
+          addUpdatePayload,
+          {
+            where: { id: { [Op.in]: addedCalfIds } },
+            transaction: t
+          }
+        )
+
+        await model.CalfMovementHistory.bulkCreate(
+          calvesBeforeUpdate.map((calf) => ({
+            calfID: calf.id,
+            loadID: load.id,
+            movementType: 'load_transfer',
+            eventDate: updatedFields.departureDate || currentData.departureDate || new Date(),
+            fromRanchID: originRanchID || calf.currentRanchID || null,
+            toRanchID: destinationRanchID || null,
+            fromStatus: calf.status || 'feeding',
+            toStatus: 'shipped',
+            notes: `Added to load #${load.id} during edit`
+          })),
+          { transaction: t }
+        )
+      }
+
+      if (keptCalfIds.length > 0) {
+        const keptUpdatePayload = {
+          status: 'shipped',
+          shippedOutDate: updatedFields.departureDate || currentData.departureDate || null,
+          shippedTo: destinationLabel || null
+        }
+        if (destinationRanchID) {
+          keptUpdatePayload.currentRanchID = destinationRanchID
+        }
+
+        await model.Calves.update(
+          keptUpdatePayload,
+          {
+            where: { id: { [Op.in]: keptCalfIds } },
+            transaction: t
+          }
+        )
+      }
+
+      await t.commit()
+      return await this.findOne(id)
+    } catch (error) {
+      await t.rollback()
+      console.error('❌ Update load transaction failed, rolled back:', error)
+      throw error
+    }
   }
 
   async delete(id) {
-    const load = await this.findOne(id)
-    await load.destroy()
-    return { id }
+    const t = await sequelize.transaction()
+
+    try {
+      const load = await model.Loads.findByPk(id, {
+        include: [
+          {
+            model: model.CalfLoads,
+            as: 'load',
+            include: [{ model: model.Calves, as: 'calf' }]
+          }
+        ],
+        transaction: t
+      })
+
+      if (!load) {
+        throw new Error(`Load with id ${id} not found`)
+      }
+
+      const loadData = load.toJSON()
+      const loadCalfRows = loadData.load || []
+      const calfIds = [...new Set(loadCalfRows.map((row) => row.calfID).filter(Boolean))]
+
+      if (calfIds.length > 0) {
+        const movementRows = await model.CalfMovementHistory.findAll({
+          where: {
+            loadID: load.id,
+            calfID: { [Op.in]: calfIds },
+            movementType: 'load_transfer'
+          },
+          order: [['id', 'DESC']],
+          transaction: t
+        })
+
+        const restoreStateByCalfId = new Map()
+        movementRows.forEach((entry) => {
+          if (!restoreStateByCalfId.has(entry.calfID)) {
+            restoreStateByCalfId.set(entry.calfID, {
+              status: entry.fromStatus || null,
+              ranchID: entry.fromRanchID || null
+            })
+          }
+        })
+
+        const calves = await model.Calves.findAll({
+          where: { id: { [Op.in]: calfIds } },
+          transaction: t
+        })
+
+        const revertHistoryEntries = []
+
+        for (const calf of calves) {
+          const previous = restoreStateByCalfId.get(calf.id) || {}
+          const restoredStatus = previous.status || 'feeding'
+          const restoredRanchID = previous.ranchID || calf.originRanchID || calf.currentRanchID || null
+          const fromStatus = calf.status || null
+          const fromRanchID = calf.currentRanchID || null
+
+          await calf.update(
+            {
+              status: restoredStatus,
+              currentRanchID: restoredRanchID,
+              shippedOutDate: null,
+              shippedTo: null
+            },
+            { transaction: t }
+          )
+
+          revertHistoryEntries.push({
+            calfID: calf.id,
+            loadID: load.id,
+            movementType: 'status_change',
+            eventDate: new Date(),
+            fromRanchID,
+            toRanchID: restoredRanchID,
+            fromStatus,
+            toStatus: restoredStatus,
+            notes: `Load #${load.id} deleted. Calf restored to previous status`
+          })
+        }
+
+        if (revertHistoryEntries.length > 0) {
+          await model.CalfMovementHistory.bulkCreate(revertHistoryEntries, { transaction: t })
+        }
+      }
+
+      await model.CalfLoads.destroy({
+        where: { loadID: load.id },
+        transaction: t
+      })
+
+      await load.destroy({ transaction: t })
+      await t.commit()
+      return { id: Number(id) }
+    } catch (error) {
+      await t.rollback()
+      throw error
+    }
   }
 
   async findLoadbyRanch(id) {
@@ -119,7 +448,7 @@ class LoadsService {
       }
 
       // Build where ONLY if filters exist
-      const where = { status: "feeding" }
+      const where = { status: { [Op.in]: ["feeding", "alive"] } }
       if (hasEids) where.EID = eids.map(eid => String(eid))
       if (hasPrimary) where.primaryID = primaryIDs
 
@@ -133,7 +462,7 @@ class LoadsService {
             model.Calves.update(
               {
                 currentRanchID: destinationRanchIdValue || calf.currentRanchID,
-                status: "feeding",
+                status: "shipped",
                 shippedOutDate: departureDate || null,
                 shippedTo: destinationLabel
               },
@@ -158,7 +487,7 @@ class LoadsService {
           fromRanchID: originRanchID || calf.currentRanchID || null,
           toRanchID: destinationRanchIdValue || null,
           fromStatus: calf.status || 'feeding',
-          toStatus: 'feeding',
+          toStatus: 'shipped',
           notes: notes || trucking || 'Transferred by load'
         }))
 

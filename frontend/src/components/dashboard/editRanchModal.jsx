@@ -6,6 +6,7 @@ const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
     name: "",
     address: "",
     city: "",
+    zipCode: "",
     state: "",
     manager: "",
   })
@@ -18,6 +19,7 @@ const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
       name: ranch.name || "",
       address: ranch.address || "",
       city: ranch.city || "",
+      zipCode: ranch.zipCode || "",
       state: ranch.state || "",
       manager: ranch.manager || ranch.managerName || "",
     })
@@ -52,6 +54,7 @@ const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
       name: formData.name.trim(),
       address: formData.address.trim(),
       city: formData.city.trim(),
+      zipCode: formData.zipCode.trim(),
       state: formData.state.trim(),
       manager: formData.manager.trim(),
     })
@@ -94,7 +97,7 @@ const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
               {errors.address && <p className="text-xs text-red-500 mt-1">{errors.address}</p>}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-primary-text mb-1">City <span className="text-red-600">*</span></label>
                 <input
@@ -104,6 +107,16 @@ const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
                   className="w-full rounded-md border border-primary-border/40 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-border"
                 />
                 {errors.city && <p className="text-xs text-red-500 mt-1">{errors.city}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-primary-text mb-1">Zip Code</label>
+                <input
+                  type="text"
+                  value={formData.zipCode}
+                  onChange={(e) => handleChange("zipCode", e.target.value)}
+                  className="w-full rounded-md border border-primary-border/40 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-border"
+                />
               </div>
 
               <div>

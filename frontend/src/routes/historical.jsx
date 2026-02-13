@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "react-router-dom"
-import { Download, Search } from "lucide-react"
+import { Download, Search, X } from "lucide-react"
 import * as XLSX from "xlsx"
 import { saveAs } from "file-saver"
 import { useToken } from "../api/useToken"
@@ -8,17 +8,21 @@ import { getRanchById } from "../api/ranches"
 import { getCalvesByRanch, getCalfMovementHistory, updateCalf, deleteCalf } from "../api/calves"
 import { useAppContext } from "../context"
 import { formatDateMMDDYYYY } from "../utils/dateFormat"
+import { isDateInDateRange } from "../utils/dateRange"
 import MainDataTable from "../components/shared/mainDataTable"
 import DateFilterMenu from "../components/shared/dateFilterMenu"
 import BreedSellerFilterMenu from "../components/shared/breedSellerFilterMenu"
+import SearchOptionsMenu from "../components/shared/searchOptionsMenu"
 import CalfDetailPanel from "../components/calves/calfDetailPanel"
 import CalfEditModal from "../components/calves/calfEditModal"
+import { RanchPageSkeleton } from "../components/shared/loadingSkeletons"
+import { getWeightCategoryLabel, normalizeWeightCategories } from "../utils/weightCategories"
 
 const Historical = () => {
 
     const { id } = useParams()
     const token = useToken()
-    const { ranch, setRanch } = useAppContext()
+    const { ranch, setRanch, confirmAction, showSuccess, showError } = useAppContext()
     const [calves, setCalves] = useState([])
     const [loadingHistorical, setLoadingHistorical] = useState(true)
     const [selectedCalf, setSelectedCalf] = useState(null)
@@ -28,8 +32,13 @@ const Historical = () => {
     const [isEditing, setIsEditing] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [mainSearch, setMainSearch] = useState("")
+    const [mainSearchMode, setMainSearchMode] = useState("single")
+    const [mainSearchMatch, setMainSearchMatch] = useState("contains")
+    const [mainSearchField, setMainSearchField] = useState("all")
     const [mainBreed, setMainBreed] = useState([])
     const [mainSeller, setMainSeller] = useState([])
+    const [mainStatus, setMainStatus] = useState("")
+    const [mainWeightCategory, setMainWeightCategory] = useState("")
     const [mainDateFrom, setMainDateFrom] = useState("")
     const [mainDateTo, setMainDateTo] = useState("")
     const [mainRowLimit, setMainRowLimit] = useState(15)
@@ -83,7 +92,9 @@ const Historical = () => {
       { key: "breed", label: "Breed" },
       { key: "sex", label: "Sex" },
       { key: "purchasePrice", label: "Purchase Price" },
-      { key: "status", label: "Status", align: "right" }
+      { key: "status", label: "Status", align: "right" },
+      { key: "weight", label: "Weight" },
+      { key: "weightCategory", label: "Bracket" }
     ]
 
     const formatDateCell = (value) => {
@@ -179,31 +190,83 @@ const Historical = () => {
       () => [...new Set(calves.map((calf) => calf.seller).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))),
       [calves]
     )
+    const effectiveWeightCategories = useMemo(
+      () => normalizeWeightCategories(ranch?.weightCategories),
+      [ranch?.weightCategories]
+    )
+    const weightCategoryOptions = useMemo(
+      () => effectiveWeightCategories.map((category) => category.label).filter(Boolean),
+      [effectiveWeightCategories]
+    )
 
-    const applyCalfFilters = (source, filters) => {
+    const normalizeSearchValue = useCallback(
+      (value) => String(value ?? "").toLowerCase().trim().replace(/[\s-]+/g, ""),
+      []
+    )
+    const getMainSearchPlaceholder = useCallback((mode, field) => {
+      const byField = {
+        visualTag: mode === "multiple" ? "TAG-001, TAG-002, TAG-003" : "Search visual tag",
+        eid: mode === "multiple" ? "982000001, 982000002, 982000003" : "Search EID",
+        backTag: mode === "multiple" ? "B-001, B-002, B-003" : "Search back tag",
+        all: mode === "multiple" ? "TAG-001, TAG-002, TAG-003" : "Search tag / EID / back tag",
+      }
+      return byField[field] || byField.all
+    }, [])
+
+    const applyCalfFilters = useCallback((source, filters) => {
       const asArray = (value) => {
         if (Array.isArray(value)) return value
         if (value === null || value === undefined || value === "") return []
         return [value]
       }
       return source.filter((calf) => {
-        const haystack = `${calf.primaryID || ""} ${calf.EID || ""} ${calf.backTag || calf.originalID || ""}`.toLowerCase()
-        const searchMatch = !filters.search || haystack.includes(filters.search.toLowerCase())
+        const searchMode = filters.searchMode || "single"
+        const searchMatchMode = filters.searchMatch || "contains"
+        const searchValue = normalizeSearchValue(filters.search)
+        const searchTokens = String(filters.search || "")
+          .split(/[,\n]+/)
+          .map((value) => normalizeSearchValue(value))
+          .filter(Boolean)
+        const searchableValuesByField = {
+          visualTag: [calf.primaryID, calf.visualTag],
+          eid: [calf.EID, calf.eid],
+          backTag: [calf.backTag, calf.originalID],
+        }
+        const searchField = filters.searchField || "all"
+        const searchableValues = (
+          searchField === "all"
+            ? [...searchableValuesByField.visualTag, ...searchableValuesByField.eid, ...searchableValuesByField.backTag]
+            : (searchableValuesByField[searchField] || [])
+        )
+          .map((value) => normalizeSearchValue(value))
+          .filter(Boolean)
+        const matchesSearchValue = (candidateValue) => (
+          searchMatchMode === "exact"
+            ? searchableValues.some((value) => value === candidateValue)
+            : searchableValues.some((value) => value.includes(candidateValue))
+        )
+        const searchMatch = !searchValue
+          ? true
+          : searchMode === "multiple"
+            ? searchTokens.length === 0 || searchTokens.some((token) => matchesSearchValue(token))
+            : matchesSearchValue(searchValue)
         const breedFilterValues = asArray(filters.breed)
         const sellerFilterValues = asArray(filters.seller)
+        const statusFilterValues = asArray(filters.status)
+        const weightCategoryFilter = String(filters.weightCategory || "")
         const breedMatch = breedFilterValues.length === 0 || breedFilterValues.includes(calf.breed)
         const sellerMatch = sellerFilterValues.length === 0 || sellerFilterValues.includes(calf.seller)
+        const statusKey = normalizeStatus(calf)
+        const statusMatch = statusFilterValues.length === 0 || statusFilterValues.includes(statusKey)
+        const weightCategory = getWeightCategoryLabel(calf.weight, filters.weightCategories)
+        const weightCategoryMatch = !weightCategoryFilter || weightCategory === weightCategoryFilter
 
         const rawDate = calf.dateIn || calf.placedDate
-        const calfDate = rawDate ? new Date(rawDate) : null
-        const fromLimit = filters.dateFrom ? new Date(`${filters.dateFrom}T00:00:00`) : null
-        const toLimit = filters.dateTo ? new Date(`${filters.dateTo}T23:59:59`) : null
-        const dateFromMatch = !fromLimit || (calfDate && calfDate >= fromLimit)
-        const dateToMatch = !toLimit || (calfDate && calfDate <= toLimit)
+        const dateRangeMatch = isDateInDateRange(rawDate, filters.dateFrom, filters.dateTo)
 
-        return searchMatch && breedMatch && sellerMatch && dateFromMatch && dateToMatch
+        return searchMatch && breedMatch && sellerMatch && statusMatch && weightCategoryMatch && dateRangeMatch
       })
-    }
+    }, [normalizeSearchValue, normalizeStatus])
 
     const sortRowsBy = (sourceRows, sortConfig) => {
       if (!sortConfig?.key) return sourceRows
@@ -241,17 +304,29 @@ const Historical = () => {
     }
 
     const filteredMainCalves = useMemo(
-      () => applyCalfFilters(calves, { search: mainSearch, breed: mainBreed, seller: mainSeller, dateFrom: mainDateFrom, dateTo: mainDateTo }),
-      [calves, mainSearch, mainBreed, mainSeller, mainDateFrom, mainDateTo]
+      () => applyCalfFilters(calves, {
+        search: mainSearch,
+        searchMode: mainSearchMode,
+        searchMatch: mainSearchMatch,
+        searchField: mainSearchField,
+        breed: mainBreed,
+        seller: mainSeller,
+        status: mainStatus,
+        weightCategory: mainWeightCategory,
+        weightCategories: effectiveWeightCategories,
+        dateFrom: mainDateFrom,
+        dateTo: mainDateTo,
+      }),
+      [applyCalfFilters, calves, mainSearch, mainSearchMode, mainSearchMatch, mainSearchField, mainBreed, mainSeller, mainStatus, mainWeightCategory, effectiveWeightCategories, mainDateFrom, mainDateTo]
     )
     const filteredBreedCalves = useMemo(
-      () => applyCalfFilters(calves, { search: "", breed: [], seller: breedFilterSeller, dateFrom: breedDateFrom, dateTo: breedDateTo }),
-      [calves, breedFilterSeller, breedDateFrom, breedDateTo]
+      () => applyCalfFilters(calves, { search: "", breed: breedFilterSeller, seller: [], dateFrom: breedDateFrom, dateTo: breedDateTo }),
+      [applyCalfFilters, calves, breedFilterSeller, breedDateFrom, breedDateTo]
     )
 
     const filteredSellerCalves = useMemo(
-      () => applyCalfFilters(calves, { search: "", breed: sellerFilterBreed, seller: [], dateFrom: sellerDateFrom, dateTo: sellerDateTo }),
-      [calves, sellerFilterBreed, sellerDateFrom, sellerDateTo]
+      () => applyCalfFilters(calves, { search: "", breed: [], seller: sellerFilterBreed, dateFrom: sellerDateFrom, dateTo: sellerDateTo }),
+      [applyCalfFilters, calves, sellerFilterBreed, sellerDateFrom, sellerDateTo]
     )
 
     const tableRows = useMemo(() => (
@@ -261,6 +336,8 @@ const Historical = () => {
         eid: calf.EID || calf.eid || "-",
         backTag: calf.backTag || calf.originalID || "-",
         dateIn: formatDateCell(calf.dateIn || calf.placedDate),
+        weightCategory: getWeightCategoryLabel(calf.weight, effectiveWeightCategories),
+        weight: calf.weight ?? "-",
         breed: calf.breed
           ? calf.breed.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
           : "-",
@@ -270,7 +347,7 @@ const Historical = () => {
         status: renderStatusBadge(normalizeStatus(calf)),
         purchasePrice: formatMoneyCell(calf.purchasePrice ?? calf.price)
       }))
-    ), [filteredMainCalves, normalizeStatus, renderStatusBadge])
+    ), [filteredMainCalves, effectiveWeightCategories, normalizeStatus, renderStatusBadge])
 
     const breedSummaryRows = useMemo(() => {
       const accumulator = new Map()
@@ -364,6 +441,7 @@ const Historical = () => {
           : "-"
       },
       { label: "Weight", value: selectedCalfInfo.weight ?? "-" },
+      { label: "Weight Category", value: getWeightCategoryLabel(selectedCalfInfo.weight, effectiveWeightCategories) },
       {
         label: "Purchase Price",
         value: selectedCalfInfo.purchasePrice ?? selectedCalfInfo.price
@@ -393,6 +471,8 @@ const Historical = () => {
       { label: "Death Date", value: formatDate(selectedCalfInfo.deathDate) },
       { label: "Pre Days On Feed", value: selectedCalfInfo.preDaysOnFeed ?? "-" },
       { label: "Days On Feed", value: calculateDaysOnFeed(selectedCalfInfo) },
+      { label: "Created At", value: formatDate(selectedCalfInfo.createdAt) },
+      { label: "Updated At", value: formatDate(selectedCalfInfo.updatedAt) },
     ] : []
 
     const toNumberOrNull = (value) => {
@@ -439,8 +519,14 @@ const Historical = () => {
     const handleExportExcel = () => {
       const exportSource = applyCalfFilters(calves, {
         search: mainSearch,
+        searchMode: mainSearchMode,
+        searchMatch: mainSearchMatch,
+        searchField: mainSearchField,
         breed: mainBreed,
         seller: mainSeller,
+        status: mainStatus,
+        weightCategory: mainWeightCategory,
+        weightCategories: effectiveWeightCategories,
         dateFrom: mainDateFrom,
         dateTo: mainDateTo,
       })
@@ -450,6 +536,7 @@ const Historical = () => {
         EID: calf.EID || calf.eid || "",
         "Back Tag": calf.backTag || calf.originalID || "",
         "Date In": formatDateForExport(calf.dateIn || calf.placedDate),
+        "Weight Category": getWeightCategoryLabel(calf.weight, effectiveWeightCategories),
         Breed: calf.breed || "",
         Sex: calf.sex || "",
         Weight: calf.weight ?? "",
@@ -482,20 +569,27 @@ const Historical = () => {
 
     const handleDeleteCalf = async () => {
       if (!selectedCalf?.id || !token) return
-      const confirmed = window.confirm(`Delete calf "${selectedCalf.visualTag || selectedCalf.id}"? This action cannot be undone.`)
+      const confirmed = await confirmAction({
+        title: "Delete Calf",
+        message: `Delete calf "${selectedCalf.visualTag || selectedCalf.id}"? This action cannot be undone.`,
+        confirmText: "YES",
+        cancelText: "NO",
+      })
       if (!confirmed) return
 
       try {
         await deleteCalf(selectedCalf.id, token)
         setCalves((prev) => prev.filter((calf) => calf.id !== selectedCalf.id))
         closeDetailPanel()
+        showSuccess(`Calf "${selectedCalf.visualTag || selectedCalf.id}" deleted successfully.`, "Deleted")
       } catch (error) {
         console.error("Error deleting calf:", error)
+        showError(error?.response?.data?.message || "Could not delete calf.")
       }
     }
 
-      if (!ranch) {
-        return <div>Loading ranch data...</div>
+      if (!ranch || loadingHistorical) {
+        return <RanchPageSkeleton />
       }
 
 
@@ -528,7 +622,7 @@ const Historical = () => {
         </div>
 
         <MainDataTable
-          title={loadingHistorical ? "Loading historical..." : "Historical Overview"}
+          title="Historical Overview"
           rows={tableRows}
           enablePagination
           pageSize={mainRowLimit}
@@ -536,26 +630,67 @@ const Historical = () => {
           onRowClick={handleRowClick}
           selectedRowKey={selectedCalf?.id}
           filters={
-            <div className="flex flex-col xl:flex-row xl:items-stretch xl:justify-between gap-3">
-              <div className="relative xl:w-[320px]">
-                <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-secondary" />
-                <input
-                  className="w-full rounded-xl border border-primary-border/40 pl-9 pr-3 py-2.5 text-sm"
-                  placeholder="Search tag / EID / back tag"
-                  value={mainSearch}
-                  onChange={(e) => setMainSearch(e.target.value)}
+            <div className="flex flex-col xl:flex-wrap xl:flex-row xl:items-start xl:justify-between gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-[180px_minmax(0,1fr)] gap-3 xl:flex-1 xl:min-w-[380px]">
+                <SearchOptionsMenu
+                  searchMode={mainSearchMode}
+                  searchMatch={mainSearchMatch}
+                  searchField={mainSearchField}
+                  fieldOptions={[
+                    { value: "all", label: "All" },
+                    { value: "visualTag", label: "Visual Tag" },
+                    { value: "eid", label: "EID" },
+                    { value: "backTag", label: "Back Tag" },
+                  ]}
+                  onChange={({ searchMode, searchMatch, searchField }) => {
+                    setMainSearchMode(searchMode)
+                    setMainSearchMatch(searchMatch)
+                    setMainSearchField(searchField || "all")
+                  }}
                 />
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-secondary" />
+                  <input
+                    className="h-[40px] w-full rounded-xl border border-primary-border/40 pl-9 pr-9 text-xs"
+                    placeholder={getMainSearchPlaceholder(mainSearchMode, mainSearchField)}
+                    value={mainSearch}
+                    onChange={(e) => setMainSearch(e.target.value)}
+                  />
+                  {mainSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setMainSearch("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
+                      aria-label="Clear search"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+                {mainSearchMode === "multiple" && (
+                  <p className="sm:col-span-2 text-xs text-secondary">
+                    Multiple values must be separated by comma.
+                  </p>
+                )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-5 xl:grid-cols-[160px_160px_130px_130px_120px] gap-3 xl:justify-end">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 xl:flex-1 xl:min-w-[620px]">
                 <BreedSellerFilterMenu
                   className="w-full"
                   breed={mainBreed}
                   seller={mainSeller}
+                  status={mainStatus}
+                  weightCategory={mainWeightCategory}
                   breedOptions={breedOptions}
                   sellerOptions={sellerOptions}
-                  onChange={({ breed, seller }) => {
+                  statusOptions={["feeding", "shipped", "sold", "alive", "dead"]}
+                  weightCategoryOptions={weightCategoryOptions}
+                  showStatus
+                  showWeightCategory
+                  onChange={({ breed, seller, status, weightCategory }) => {
                     setMainBreed(Array.isArray(breed) ? breed : (breed ? [breed] : []))
                     setMainSeller(Array.isArray(seller) ? seller : (seller ? [seller] : []))
+                    setMainStatus(status || "")
+                    setMainWeightCategory(weightCategory || "")
                   }}
                 />
                 <DateFilterMenu
@@ -569,12 +704,16 @@ const Historical = () => {
                 />
                 <input
                   type="number"
-                  min={0}
                   max={1000}
                   className="w-full rounded-xl border border-primary-border/40 px-3 py-2 text-xs"
                   value={mainRowLimit}
                   onChange={(e) => {
-                    const nextValue = Number(e.target.value)
+                    const rawValue = e.target.value
+                    if (rawValue === "") {
+                      setMainRowLimit("")
+                      return
+                    }
+                    const nextValue = Number(rawValue)
                     if (!Number.isFinite(nextValue)) return
                     setMainRowLimit(Math.max(0, Math.min(1000, nextValue)))
                   }}
@@ -585,15 +724,20 @@ const Historical = () => {
                   onClick={handleExportExcel}
                 >
                   <Download className="h-3.5 w-3.5" />
-                  Export Excel
+                  Export
                 </button>
                 <button
                   type="button"
                   className="w-full rounded-xl border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
                   onClick={() => {
                     setMainSearch("")
+                    setMainSearchMode("single")
+                    setMainSearchMatch("contains")
+                    setMainSearchField("all")
                     setMainBreed([])
                     setMainSeller([])
+                    setMainStatus("")
+                    setMainWeightCategory("")
                     setMainDateFrom("")
                     setMainDateTo("")
                   }}
@@ -614,13 +758,13 @@ const Historical = () => {
               <div className="flex flex-wrap lg:flex-nowrap items-stretch gap-2">
                 <BreedSellerFilterMenu
                   className="w-[150px] shrink-0"
-                  breed={[]}
-                  seller={breedFilterSeller}
-                  showBreed={false}
-                  showSeller
-                  sellerOptions={sellerOptions}
-                  onChange={({ seller }) => {
-                    setBreedFilterSeller(Array.isArray(seller) ? seller : (seller ? [seller] : []))
+                  breed={breedFilterSeller}
+                  seller={[]}
+                  showBreed
+                  showSeller={false}
+                  breedOptions={breedOptions}
+                  onChange={({ breed }) => {
+                    setBreedFilterSeller(Array.isArray(breed) ? breed : (breed ? [breed] : []))
                   }}
                 />
                 <DateFilterMenu
@@ -689,15 +833,15 @@ const Historical = () => {
               <div className="flex flex-wrap lg:flex-nowrap items-stretch gap-2">
                 <BreedSellerFilterMenu
                   className="w-[150px] shrink-0"
-                  breed={sellerFilterBreed}
-                  seller={[]}
-                  showBreed
-                      showSeller={false}
-                      breedOptions={breedOptions}
-                      onChange={({ breed }) => {
-                        setSellerFilterBreed(Array.isArray(breed) ? breed : (breed ? [breed] : []))
-                      }}
-                    />
+                  breed={[]}
+                  seller={sellerFilterBreed}
+                  showBreed={false}
+                  showSeller
+                  sellerOptions={sellerOptions}
+                  onChange={({ seller }) => {
+                    setSellerFilterBreed(Array.isArray(seller) ? seller : (seller ? [seller] : []))
+                  }}
+                />
                 <DateFilterMenu
                   className="w-[150px] shrink-0"
                   dateFrom={sellerDateFrom}

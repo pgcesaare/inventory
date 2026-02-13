@@ -173,7 +173,9 @@ class CalvesService {
                 preDaysOnFeed: calf.preDaysOnFeed,
                 daysOnFeed: calf.daysOnFeed,
                 originRanchID: calf.originRanchID,
-                currentRanchID: calf.currentRanchID
+                currentRanchID: calf.currentRanchID,
+                createdAt: calf.createdAt || null,
+                updatedAt: calf.updatedAt || null
             },
             events
         }

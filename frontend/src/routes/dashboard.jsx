@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from 'react'
 import { getRanches, getRanchById, updateRanch, deleteRanch } from '../api/ranches'
 import { useToken } from '../api/useToken'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAppContext } from '../context'
 import { formatDateMMDDYYYY } from '../utils/dateFormat'
+import { useAuth0 } from "@auth0/auth0-react"
 
 import RanchCard from '../components/dashboard/ranchCard'
 import EditRanchModal from '../components/dashboard/editRanchModal'
 import CreateButton from '../components/create'
 
-import { Search, ArrowUpDown, TrendingUp, Building2, Beef, Truck, CalendarClock } from 'lucide-react'
+import { Search, ArrowUpDown, TrendingUp, Building2, Beef, Truck, CalendarClock, LogOut, X } from 'lucide-react'
 
 const Dashboard = () => {
 
@@ -17,10 +18,13 @@ const Dashboard = () => {
   const [sortBy, setSortBy] = useState("name")
   const [editingRanch, setEditingRanch] = useState(null)
   const [isSavingRanch, setIsSavingRanch] = useState(false)
+  const [highlightRanchId, setHighlightRanchId] = useState(null)
 
   const token = useToken()
   const navigate = useNavigate()
-  const { ranches, setRanches, ranch, setRanch, setShowCreateNewRanchPopup } = useAppContext()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { logout } = useAuth0()
+  const { ranches, setRanches, ranch, setRanch, setShowCreateNewRanchPopup, confirmAction, showSuccess, showError } = useAppContext()
 
   useEffect(() => {
     if (!token) return
@@ -80,7 +84,12 @@ const Dashboard = () => {
 
   const handleDelete = async (selectedRanch) => {
     if (!token) return
-    const confirmed = window.confirm(`Delete ranch "${selectedRanch.name}"? This action cannot be undone.`)
+    const confirmed = await confirmAction({
+      title: "Delete Ranch",
+      message: `Delete ranch "${selectedRanch.name}"? This action cannot be undone.`,
+      confirmText: "YES",
+      cancelText: "NO",
+    })
     if (!confirmed) return
 
     try {
@@ -91,9 +100,10 @@ const Dashboard = () => {
       if (ranch?.id === selectedRanch.id) {
         setRanch(null)
       }
+      showSuccess(`Ranch "${selectedRanch.name}" deleted successfully.`, "Deleted")
     } catch (error) {
       console.error("Error deleting ranch:", error)
-      window.alert(error?.response?.data?.message || "Could not delete ranch.")
+      showError(error?.response?.data?.message || "Could not delete ranch.")
     }
   }
 
@@ -117,11 +127,13 @@ const Dashboard = () => {
       const ranchName = normalizeText(ranch.name)
       const ranchCity = normalizeText(ranch.city)
       const ranchState = normalizeText(ranch.state)
+      const ranchZipCode = normalizeText(ranch.zipCode)
 
       return (
         ranchName.includes(searchTerm) ||
         ranchCity.includes(searchTerm) ||
-        ranchState.includes(searchTerm)
+        ranchState.includes(searchTerm) ||
+        ranchZipCode.includes(searchTerm)
       )
     })
     .sort((a, b) => {
@@ -139,6 +151,29 @@ const Dashboard = () => {
     const time = Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime()
     return time > latest ? time : latest
   }, 0)
+
+  useEffect(() => {
+    const newRanchIdParam = searchParams.get("newRanchId")
+    if (!newRanchIdParam) return
+
+    const parsedId = Number(newRanchIdParam)
+    if (!Number.isFinite(parsedId)) return
+
+    const targetId = `ranch-card-${parsedId}`
+    const timeoutId = window.setTimeout(() => {
+      const target = document.getElementById(targetId)
+      if (!target) return
+      target.scrollIntoView({ behavior: "smooth", block: "center" })
+      setHighlightRanchId(parsedId)
+      window.setTimeout(() => setHighlightRanchId(null), 2600)
+
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete("newRanchId")
+      setSearchParams(nextParams, { replace: true })
+    }, 250)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [searchParams, setSearchParams, filteredRanches.length])
 
   return (
     <div className='w-full min-h-screen bg-background flex justify-center px-6 py-8 lg:py-10'>
@@ -224,7 +259,7 @@ const Dashboard = () => {
               onChange={(e) => setSearch(e.target.value)}
               className='
                 w-full
-                pl-10 pr-4
+                pl-10 pr-10
                 py-2.5 lg:py-3
                 rounded-xl
                 border border-primary-border/40
@@ -234,6 +269,16 @@ const Dashboard = () => {
                 focus:ring-primary-border
               '
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
 
           {/* Right side: Sort + Create */}
@@ -255,6 +300,15 @@ const Dashboard = () => {
               text="New Ranch"
               onClick={handleCreate}
             />
+            <button
+              type="button"
+              onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 px-3 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50"
+              aria-label="Log out"
+            >
+              <LogOut className="h-4 w-4" />
+              Log out
+            </button>
 
           </div>
         </div>
@@ -263,15 +317,18 @@ const Dashboard = () => {
           {filteredRanches.map(ranch => (
             <RanchCard
               key={ranch.id}
+              ranchId={ranch.id}
               ranchName={ranch.name}
               ranchAddress={ranch.address}
               ranchCity={ranch.city}
+              ranchZipCode={ranch.zipCode}
               ranchState={ranch.state}
               ranchColor={ranch.color}
               totalCattle={ranch.totalCattle}
               activeLots={ranch.activeLots}
               managerName={ranch.managerName}
               lastUpdated={ranch.lastUpdated}
+              isHighlighted={highlightRanchId === ranch.id}
               onClick={() => handleSelect(ranch)}
               onEdit={() => handleEdit(ranch)}
               onDelete={() => handleDelete(ranch)}

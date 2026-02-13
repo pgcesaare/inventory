@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useParams } from "react-router-dom"
-import { Search, CheckCheck } from "lucide-react"
+import { Search, CheckCheck, X } from "lucide-react"
 import { useToken } from "../../../../api/useToken"
 import { getRanches } from "../../../../api/ranches"
 import { getInventoryByRanch } from "../../../../api/calves"
@@ -8,22 +8,38 @@ import { createLoad } from "../../../../api/loads"
 import { formatDateMMDDYYYY } from "../../../../utils/dateFormat"
 import DateFilterMenu from "../../../shared/dateFilterMenu"
 import BreedSellerFilterMenu from "../../../shared/breedSellerFilterMenu"
+import SearchOptionsMenu from "../../../shared/searchOptionsMenu"
+import { useAppContext } from "../../../../context"
+import { isDateInDateRange } from "../../../../utils/dateRange"
 
 const fieldClass = "w-full rounded-xl border border-primary-border/40 bg-surface px-3 py-2 text-sm text-primary-text focus:outline-none focus:ring-2 focus:ring-action-blue/30"
 const pickerButtonClass = "h-[36px] rounded-xl border border-primary-border/40 px-3 text-xs font-medium text-secondary hover:bg-primary-border/10 transition-colors"
 const dateValue = (calf) => calf.placedDate || calf.dateIn || null
 const dateLabel = (value) => formatDateMMDDYYYY(value, "-")
+const normalizeSearchValue = (value) => String(value ?? "").toLowerCase().trim().replace(/[\s-]+/g, "")
+const getSearchPlaceholder = (mode, field) => {
+  const byField = {
+    visualTag: mode === "multiple" ? "TAG-001, TAG-002, TAG-003" : "Search by Visual Tag",
+    eid: mode === "multiple" ? "982000001, 982000002, 982000003" : "Search by EID",
+    backTag: mode === "multiple" ? "B-001, B-002, B-003" : "Search by Back Tag",
+    all: mode === "multiple" ? "TAG-001, TAG-002, TAG-003" : "Search by Visual Tag, EID, or Back Tag",
+  }
+  return byField[field] || byField.all
+}
 const RequiredMark = () => <span className="ml-0.5 text-red-600">*</span>
 const toTitleCase = (value) => String(value || "").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
 
 const CreateLoad = ({ onCreated }) => {
   const { id } = useParams()
   const token = useToken()
+  const { showSuccess, showError } = useAppContext()
 
   const [destinations, setDestinations] = useState([])
   const [inventoryCalves, setInventoryCalves] = useState([])
   const [selectedPrimaryIDs, setSelectedPrimaryIDs] = useState([])
   const [searchMode, setSearchMode] = useState("single")
+  const [searchMatchMode, setSearchMatchMode] = useState("exact")
+  const [searchField, setSearchField] = useState("all")
   const [tagSearch, setTagSearch] = useState("")
   const [tagListSearch, setTagListSearch] = useState("")
   const [breedFilter, setBreedFilter] = useState([])
@@ -82,34 +98,44 @@ const CreateLoad = ({ onCreated }) => {
 
   const filteredCalves = useMemo(() => {
     const tagTokens = tagListSearch
-      .split(",")
-      .map((item) => item.trim().toLowerCase())
+      .split(/[,\n]+/)
+      .map((item) => normalizeSearchValue(item))
       .filter(Boolean)
 
     return inventoryCalves.filter((calf) => {
-      const primary = String(calf.primaryID || "").trim().toLowerCase()
-      const eid = String(calf.EID || "").trim().toLowerCase()
-      const searchValue = String(tagSearch || "").trim().toLowerCase()
+      const searchValue = normalizeSearchValue(tagSearch)
+      const searchableValuesByField = {
+        visualTag: [calf.primaryID, calf.visualTag],
+        eid: [calf.EID, calf.eid],
+        backTag: [calf.backTag, calf.originalID],
+      }
+      const searchableValues = (
+        searchField === "all"
+          ? [...searchableValuesByField.visualTag, ...searchableValuesByField.eid, ...searchableValuesByField.backTag]
+          : (searchableValuesByField[searchField] || [])
+      )
+        .map((value) => normalizeSearchValue(value))
+        .filter(Boolean)
 
       const matchesSingleSearch =
-        !searchValue || primary === searchValue || eid === searchValue
-      const matchesTagList =
-        tagTokens.length === 0 || tagTokens.some((token) => primary === token || eid === token)
-      const matchesSearch = searchMode === "list" ? matchesTagList : matchesSingleSearch
+        !searchValue || searchableValues.some((value) => (
+          searchMatchMode === "exact" ? value === searchValue : value.includes(searchValue)
+        ))
+      const matchesTagList = tagTokens.length === 0 || tagTokens.some((token) => (
+        searchMatchMode === "exact"
+          ? searchableValues.some((value) => value === token)
+          : searchableValues.some((value) => value.includes(token))
+      ))
+      const matchesSearch = searchMode === "multiple" ? matchesTagList : matchesSingleSearch
       const matchesBreed = breedFilter.length === 0 || breedFilter.includes(calf.breed)
       const matchesSeller = sellerFilter.length === 0 || sellerFilter.includes(calf.seller)
 
       const calfDate = dateValue(calf)
-      const dateMs = calfDate ? new Date(calfDate).getTime() : null
-      const fromMs = calfDateFrom ? new Date(calfDateFrom).getTime() : null
-      const toMs = calfDateTo ? new Date(calfDateTo).getTime() : null
+      const matchesDateRange = isDateInDateRange(calfDate, calfDateFrom, calfDateTo)
 
-      const matchesDateFrom = fromMs === null || (dateMs !== null && dateMs >= fromMs)
-      const matchesDateTo = toMs === null || (dateMs !== null && dateMs <= toMs + 86399999)
-
-      return matchesSearch && matchesBreed && matchesSeller && matchesDateFrom && matchesDateTo
+      return matchesSearch && matchesBreed && matchesSeller && matchesDateRange
     })
-  }, [inventoryCalves, searchMode, tagSearch, tagListSearch, breedFilter, sellerFilter, calfDateFrom, calfDateTo])
+  }, [inventoryCalves, searchMode, searchMatchMode, searchField, tagSearch, tagListSearch, breedFilter, sellerFilter, calfDateFrom, calfDateTo])
   const calculateDaysOnFeed = (calf) => {
     const intakeRaw = calf.dateIn || calf.placedDate
     const intakeDate = intakeRaw ? new Date(intakeRaw) : null
@@ -169,7 +195,7 @@ const CreateLoad = ({ onCreated }) => {
     return total / selectedCalves.length
   }, [inventoryCalves, selectedPrimaryIDs])
   const safePickerLimit = useMemo(() => {
-    const parsed = Number(pickerRowLimit)
+    const parsed = pickerRowLimit === "" ? Number.NaN : Number(pickerRowLimit)
     if (!Number.isFinite(parsed)) return 15
     return Math.max(0, Math.min(1000, parsed))
   }, [pickerRowLimit])
@@ -197,7 +223,7 @@ const CreateLoad = ({ onCreated }) => {
 
   useEffect(() => {
     setPickerPage(1)
-  }, [searchMode, tagSearch, tagListSearch, breedFilter, sellerFilter, calfDateFrom, calfDateTo, sortConfig.key, sortConfig.direction, safePickerLimit])
+  }, [searchMode, searchMatchMode, tagSearch, tagListSearch, breedFilter, sellerFilter, calfDateFrom, calfDateTo, sortConfig.key, sortConfig.direction, safePickerLimit])
 
   useEffect(() => {
     if (pickerPage > pickerTotalPages) {
@@ -323,9 +349,11 @@ const CreateLoad = ({ onCreated }) => {
       )
 
       setMessage(`Load created with ${selectedPrimaryIDs.length} calves.`)
+      showSuccess(`Load created with ${selectedPrimaryIDs.length} calves.`, "Created")
       if (onCreated) onCreated()
     } catch (error) {
       setMessage(error?.response?.data?.message || "Error creating load.")
+      showError(error?.response?.data?.message || "Error creating load.")
     } finally {
       setIsSubmitting(false)
     }
@@ -431,33 +459,59 @@ const CreateLoad = ({ onCreated }) => {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-col xl:flex-row xl:items-stretch gap-3">
-          <div className="grid grid-cols-1 sm:grid-cols-[170px_minmax(0,1fr)] gap-3 xl:flex-1 xl:min-w-0">
-            <select
-              className={fieldClass}
-              value={searchMode}
-              onChange={(e) => setSearchMode(e.target.value)}
-            >
-              <option value="single">Single Tag</option>
-              <option value="list">Comma Tags</option>
-            </select>
+        <div className="mt-4 flex flex-col xl:flex-wrap xl:flex-row xl:items-stretch gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-[180px_minmax(0,1fr)] gap-3 xl:flex-1 xl:min-w-[340px]">
+            <SearchOptionsMenu
+              searchMode={searchMode}
+              searchMatch={searchMatchMode}
+              searchField={searchField}
+              fieldOptions={[
+                { value: "all", label: "All" },
+                { value: "visualTag", label: "Visual Tag" },
+                { value: "eid", label: "EID" },
+                { value: "backTag", label: "Back Tag" },
+              ]}
+              onChange={({ searchMode: nextMode, searchMatch: nextMatch, searchField: nextField }) => {
+                setSearchMode(nextMode)
+                setSearchMatchMode(nextMatch)
+                setSearchField(nextField || "all")
+              }}
+            />
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-secondary" />
               <input
-                className={`${fieldClass} pl-9`}
-                placeholder={searchMode === "list" ? "TAG-001, TAG-002, TAG-003" : "Search by Visual Tag or EID"}
-                value={searchMode === "list" ? tagListSearch : tagSearch}
+                className={`${fieldClass} h-[40px] pl-9 pr-9 text-xs`}
+                placeholder={getSearchPlaceholder(searchMode, searchField)}
+                value={searchMode === "multiple" ? tagListSearch : tagSearch}
                 onChange={(e) => {
-                  if (searchMode === "list") {
+                  if (searchMode === "multiple") {
                     setTagListSearch(e.target.value)
                     return
                   }
                   setTagSearch(e.target.value)
                 }}
               />
+              {(tagSearch || tagListSearch) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTagSearch("")
+                    setTagListSearch("")
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
+                  aria-label="Clear search"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
             </div>
+            {searchMode === "multiple" && (
+              <p className="sm:col-span-2 text-xs text-secondary">
+                Multiple values must be separated by comma.
+              </p>
+            )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px_110px] gap-3 xl:flex-1 xl:min-w-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 xl:flex-1 xl:min-w-[500px]">
             <BreedSellerFilterMenu
               className="w-full"
               menuAlign="right"
@@ -482,12 +536,16 @@ const CreateLoad = ({ onCreated }) => {
             />
             <input
               type="number"
-              min={0}
               max={1000}
               className={fieldClass}
               value={pickerRowLimit}
               onChange={(e) => {
-                const nextValue = Number(e.target.value)
+                const rawValue = e.target.value
+                if (rawValue === "") {
+                  setPickerRowLimit("")
+                  return
+                }
+                const nextValue = Number(rawValue)
                 if (!Number.isFinite(nextValue)) return
                 setPickerRowLimit(Math.max(0, Math.min(1000, nextValue)))
               }}
@@ -498,6 +556,9 @@ const CreateLoad = ({ onCreated }) => {
               onClick={() => {
                 setTagSearch("")
                 setTagListSearch("")
+                setSearchMode("single")
+                setSearchMatchMode("exact")
+                setSearchField("all")
                 setBreedFilter([])
                 setSellerFilter([])
                 setCalfDateFrom("")
@@ -514,7 +575,7 @@ const CreateLoad = ({ onCreated }) => {
         {pickerError && <p className="mt-2 text-xs text-red-600">{pickerError}</p>}
 
         <div className="mt-4 rounded-xl border border-primary-border/30">
-          <div className="h-[600px] overflow-y-auto overflow-x-auto overscroll-contain">
+          <div className="max-h-[600px] overflow-y-auto overflow-x-auto overscroll-contain">
             <table className="w-full table-fixed border-collapse">
             <thead className="sticky top-0 z-10 bg-primary-border/10">
               <tr>

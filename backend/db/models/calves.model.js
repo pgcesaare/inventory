@@ -234,7 +234,9 @@ class Calves extends Model {
         sequelize,
         tableName: CALVES_TABLE,
         modelName: 'Calves',
-        timestamps: false
+        timestamps: true,
+        createdAt: 'created_at',
+        updatedAt: 'updated_at'
       }
     }
   }

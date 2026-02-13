@@ -9,6 +9,7 @@ import LoadMenu from "./loadMenu"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import { Truck, Clock3, PackageCheck } from "lucide-react"
+import { toDateKey } from "../../../../utils/dateRange"
 
 dayjs.extend(utc)
 
@@ -95,15 +96,19 @@ const LoadList = ({ setSelectedLoad, selectedLoadId, onOpen, setIsLoads, refresh
       }
 
       if (selected.date) {
-        matchDate = dayjs.utc(load.departureDate).isSame(selected.date, 'day')
+        matchDate = toDateKey(load.departureDate) === toDateKey(selected.date)
       }
 
-      if(selected.dateFrom) {
-        matchDate = dayjs.utc(load.departureDate).isAfter(dayjs.utc(selected.dateFrom).subtract(1, 'day'))
+      if (selected.dateFrom) {
+        const loadDateKey = toDateKey(load.departureDate)
+        const fromKey = toDateKey(selected.dateFrom)
+        matchDate = Boolean(loadDateKey) && Boolean(fromKey) && loadDateKey >= fromKey
       }
 
-      if(selected.dateTo) {
-        matchDate = matchDate && dayjs.utc(load.departureDate).isBefore(dayjs.utc(selected.dateTo).add(1, 'day'))
+      if (selected.dateTo) {
+        const loadDateKey = toDateKey(load.departureDate)
+        const toKey = toDateKey(selected.dateTo)
+        matchDate = matchDate && Boolean(loadDateKey) && Boolean(toKey) && loadDateKey <= toKey
       }
 
       return matchDestination && matchCity && matchState && matchDate

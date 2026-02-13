@@ -6,6 +6,7 @@ import ResetButton from "../extra/ResetButton"
 import { useAppContext } from "../../context"
 import { useToken } from "../../api/useToken"
 import { createRanch } from "../../api/ranches"
+import { useNavigate } from "react-router-dom"
 
 const randomColor = () => {
   return `#${Math.floor(Math.random() * 0xffffff)
@@ -15,12 +16,14 @@ const randomColor = () => {
 
 const CreateNewRanch = () => {
   const token = useToken()
-  const { setShowCreateNewRanchPopup, setRanches } = useAppContext()
+  const navigate = useNavigate()
+  const { setShowCreateNewRanchPopup, setRanches, showSuccess, showError } = useAppContext()
 
   const [formData, setFormData] = useState({
     name: "",
     address: "",
     city: "",
+    zipCode: "",
     state: "",
     manager: ""
   })
@@ -69,16 +72,20 @@ const CreateNewRanch = () => {
 
       let newRanch = {
         ...formData,
-        color: randomColor()
+        color: randomColor(),
+        weightCategories: [],
       }
 
       newRanch = await createRanch(newRanch, token)
 
       setRanches(prev => [...prev, newRanch])
       setShowCreateNewRanchPopup(false)
+      showSuccess(`Ranch "${newRanch.name}" created successfully.`, "Created")
+      navigate(`/dashboard?newRanchId=${newRanch.id}`)
 
     } catch (error) {
       console.error("Error creating ranch:", error)
+      showError(error?.response?.data?.message || "Could not create ranch.")
     } finally {
       setLoading(false)
     }
@@ -151,6 +158,20 @@ const CreateNewRanch = () => {
                     </p>
                   )}
                 </div>
+
+                <div>
+                  <Input
+                    type="text"
+                    label="Zip Code"
+                    name="zipCode"
+                    placeholder="Enter zip code"
+                    onChange={(value) => handleChange("zipCode", value)}
+                  />
+                </div>
+
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
 
                 <div>
                   <Input

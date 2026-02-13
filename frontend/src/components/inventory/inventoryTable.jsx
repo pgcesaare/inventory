@@ -3,11 +3,9 @@ import { getInventoryByRanch } from '../../api/calves'
 import { useToken } from '../../api/useToken'
 import FullTable from '../tables/FullTable'
 import dayjs from 'dayjs'
-import utc from 'dayjs/plugin/utc'
 import isBetween from 'dayjs/plugin/isBetween'
 
 // 🔹 Extender dayjs con plugins
-dayjs.extend(utc)
 dayjs.extend(isBetween)
 
 const InventoryTable = ({ ranchId }) => {
@@ -56,16 +54,16 @@ const InventoryTable = ({ ranchId }) => {
       accessorKey: 'placedDate',
       header: 'Date',
       align: 'center',
-      cell: (cell) => dayjs.utc(cell.getValue()).format('MM/DD/YYYY'),
+      cell: (cell) => dayjs(cell.getValue()).format('MM/DD/YYYY'),
       // Filtro personalizado por rango o fecha específica
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true
-        const rowDate = dayjs.utc(row.getValue(columnId))
+        const rowDate = dayjs(row.getValue(columnId))
 
         // Rango de fechas
         if (filterValue.dateFrom || filterValue.dateTo) {
-          const from = filterValue.dateFrom ? dayjs.utc(filterValue.dateFrom).startOf('day') : null
-          const to = filterValue.dateTo ? dayjs.utc(filterValue.dateTo).endOf('day') : null
+          const from = filterValue.dateFrom ? dayjs(filterValue.dateFrom).startOf('day') : null
+          const to = filterValue.dateTo ? dayjs(filterValue.dateTo).endOf('day') : null
 
           if (from && to) return rowDate.isBetween(from, to, null, '[]')
           if (from) return rowDate.isSame(from, 'day') || rowDate.isAfter(from)
@@ -74,7 +72,7 @@ const InventoryTable = ({ ranchId }) => {
 
         // Fecha puntual
         if (filterValue.date) {
-          const filterDate = dayjs.utc(filterValue.date).startOf('day')
+          const filterDate = dayjs(filterValue.date).startOf('day')
           return rowDate.isSame(filterDate, 'day')
         }
 

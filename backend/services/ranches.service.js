@@ -1,15 +1,83 @@
 const { Op, fn, col } = require('sequelize')
 const { sequelize, model } = require('../db/libs/sequelize')
 
+const toNullableNumber = (value) => {
+    if (value === null || value === undefined || value === '') return null
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+}
+
+const normalizeWeightCategories = (categories) => {
+    if (!Array.isArray(categories)) return []
+
+    return categories.map((item, index) => ({
+        categoryKey: item?.key ? String(item.key) : null,
+        minWeight: toNullableNumber(item?.min),
+        maxWeight: toNullableNumber(item?.max),
+        label: String(item?.label || `Category ${index + 1}`),
+        description: item?.description === null || item?.description === undefined ? null : String(item.description),
+        orderIndex: index,
+    }))
+}
+
+const mapWeightCategoriesForApi = (rows) => rows
+    .sort((a, b) => Number(a.orderIndex || 0) - Number(b.orderIndex || 0))
+    .map((row) => ({
+        key: row.categoryKey || null,
+        min: row.minWeight === null || row.minWeight === undefined ? null : Number(row.minWeight),
+        max: row.maxWeight === null || row.maxWeight === undefined ? null : Number(row.maxWeight),
+        label: row.label || '',
+        description: row.description || '',
+    }))
+
 
 class RanchesService {
     constructor(){
     }
+
+    async attachWeightCategoriesToRanches(ranches) {
+        if (!Array.isArray(ranches) || ranches.length === 0) return ranches
+
+        const ranchIds = ranches.map((item) => Number(item.id)).filter(Number.isFinite)
+        if (ranchIds.length === 0) return ranches
+
+        const categoryRows = await model.RanchWeightCategories.findAll({
+            where: { ranchID: { [Op.in]: ranchIds } },
+            raw: true,
+        })
+
+        const byRanch = new Map()
+        categoryRows.forEach((row) => {
+            const ranchId = Number(row.ranchID)
+            const current = byRanch.get(ranchId) || []
+            current.push(row)
+            byRanch.set(ranchId, current)
+        })
+
+        return ranches.map((item) => ({
+            ...item,
+            weightCategories: mapWeightCategoriesForApi(byRanch.get(Number(item.id)) || []),
+        }))
+    }
     
     async create(data) {
-            
-        const newRanch = await model.Ranches.create({...data})
-        return newRanch
+        const { weightCategories, ...ranchData } = data || {}
+        const normalizedCategories = normalizeWeightCategories(weightCategories)
+
+        const created = await sequelize.transaction(async (transaction) => {
+            const newRanch = await model.Ranches.create({ ...ranchData }, { transaction })
+
+            if (normalizedCategories.length > 0) {
+                await model.RanchWeightCategories.bulkCreate(
+                    normalizedCategories.map((item) => ({ ...item, ranchID: newRanch.id })),
+                    { transaction }
+                )
+            }
+
+            return newRanch
+        })
+
+        return this.findOne(created.id)
 
     }
 
@@ -93,7 +161,7 @@ class RanchesService {
         toMovementDates.forEach((item) => registerDate(Number(item.toRanchID), item.lastMovementDate))
         fromMovementDates.forEach((item) => registerDate(Number(item.fromRanchID), item.lastMovementDate))
 
-        return ranches.map((item) => {
+        const withAggregates = ranches.map((item) => {
             const totalCattle = inventoryMap.get(Number(item.id)) || 0
             const activeLots = activeLoadsMap.get(Number(item.id)) || 0
             const lastUpdated = lastUpdatedMap.get(Number(item.id))
@@ -106,18 +174,47 @@ class RanchesService {
                 lastUpdated: lastUpdated ? lastUpdated.toISOString() : null
             }
         })
+
+        return this.attachWeightCategoriesToRanches(withAggregates)
     }
 
     
     async findOne(id){
-        const Ranch = await model.Ranches.findByPk(id)
-        return Ranch
+        const ranch = await model.Ranches.findByPk(id, { raw: true })
+        if (!ranch) return ranch
+        const [withCategories] = await this.attachWeightCategoriesToRanches([ranch])
+        return withCategories
     }
 
     async update(id, changes) {
-        const model = await this.findOne(id)
-        const rta = await model.update(changes)
-        return rta
+        const ranchId = Number(id)
+        const ranchModel = await model.Ranches.findByPk(ranchId)
+        if (!ranchModel) return ranchModel
+
+        const { weightCategories, ...ranchChanges } = changes || {}
+        const normalizedCategories = normalizeWeightCategories(weightCategories)
+
+        await sequelize.transaction(async (transaction) => {
+            if (Object.keys(ranchChanges).length > 0) {
+                await ranchModel.update(ranchChanges, { transaction })
+            }
+
+            if (Object.prototype.hasOwnProperty.call(changes || {}, 'weightCategories')) {
+                await model.RanchWeightCategories.destroy({
+                    where: { ranchID: ranchId },
+                    transaction,
+                })
+
+                if (normalizedCategories.length > 0) {
+                    await model.RanchWeightCategories.bulkCreate(
+                        normalizedCategories.map((item) => ({ ...item, ranchID: ranchId })),
+                        { transaction }
+                    )
+                }
+            }
+        })
+
+        return this.findOne(ranchId)
     }
 
     async delete(id) {

@@ -11,11 +11,17 @@ const toTitleCase = (value) => String(value || "").toLowerCase().replace(/\b\w/g
 const BreedSellerFilterMenu = ({
   breed,
   seller,
+  status = "",
+  weightCategory = "",
   breedOptions = [],
   sellerOptions = [],
+  statusOptions = [],
+  weightCategoryOptions = [],
   onChange,
   showBreed = true,
   showSeller = true,
+  showStatus = false,
+  showWeightCategory = false,
   className = "",
   menuAlign = "left",
 }) => {
@@ -25,6 +31,8 @@ const BreedSellerFilterMenu = ({
   const [sellerSearch, setSellerSearch] = useState("")
   const selectedBreeds = useMemo(() => toArray(breed), [breed])
   const selectedSellers = useMemo(() => toArray(seller), [seller])
+  const selectedStatus = String(status || "")
+  const selectedWeightCategory = String(weightCategory || "")
   const visibleBreedOptions = useMemo(
     () => breedOptions.filter((option) => String(option).toLowerCase().includes(breedSearch.toLowerCase())),
     [breedOptions, breedSearch]
@@ -49,9 +57,11 @@ const BreedSellerFilterMenu = ({
     const parts = []
     if (showBreed && selectedBreeds.length > 0) parts.push(`Breed: ${selectedBreeds.length}`)
     if (showSeller && selectedSellers.length > 0) parts.push(`Seller: ${selectedSellers.length}`)
+    if (showStatus && selectedStatus) parts.push(`Status: ${toTitleCase(selectedStatus)}`)
+    if (showWeightCategory && selectedWeightCategory) parts.push(`Bracket: ${selectedWeightCategory}`)
     if (parts.length === 0) return "Filter"
     return parts.join(" | ")
-  }, [selectedBreeds.length, selectedSellers.length, showBreed, showSeller])
+  }, [selectedBreeds.length, selectedSellers.length, selectedStatus, selectedWeightCategory, showBreed, showSeller, showStatus, showWeightCategory])
 
   const toggleOption = (current, value) => {
     if (!value) return current
@@ -101,7 +111,12 @@ const BreedSellerFilterMenu = ({
                       <input
                         type="checkbox"
                         checked={selectedBreeds.includes(option)}
-                        onChange={() => onChange({ breed: toggleOption(selectedBreeds, option), seller: selectedSellers })}
+                        onChange={() => onChange({
+                          breed: toggleOption(selectedBreeds, option),
+                          seller: selectedSellers,
+                          status: selectedStatus,
+                          weightCategory: selectedWeightCategory
+                        })}
                       />
                       <span>{toTitleCase(option)}</span>
                     </label>
@@ -138,12 +153,59 @@ const BreedSellerFilterMenu = ({
                       <input
                         type="checkbox"
                         checked={selectedSellers.includes(option)}
-                        onChange={() => onChange({ breed: selectedBreeds, seller: toggleOption(selectedSellers, option) })}
+                        onChange={() => onChange({
+                          breed: selectedBreeds,
+                          seller: toggleOption(selectedSellers, option),
+                          status: selectedStatus,
+                          weightCategory: selectedWeightCategory
+                        })}
                       />
                       <span>{toTitleCase(option)}</span>
                     </label>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {showStatus && (
+              <div>
+                <label className="text-[11px] font-semibold text-secondary uppercase tracking-wide">Status</label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs"
+                  value={selectedStatus}
+                  onChange={(e) => onChange({
+                    breed: selectedBreeds,
+                    seller: selectedSellers,
+                    status: e.target.value,
+                    weightCategory: selectedWeightCategory
+                  })}
+                >
+                  <option value="">All Statuses</option>
+                  {statusOptions.map((option) => (
+                    <option key={option} value={option}>{toTitleCase(option)}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {showWeightCategory && (
+              <div>
+                <label className="text-[11px] font-semibold text-secondary uppercase tracking-wide">Bracket</label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs"
+                  value={selectedWeightCategory}
+                  onChange={(e) => onChange({
+                    breed: selectedBreeds,
+                    seller: selectedSellers,
+                    status: selectedStatus,
+                    weightCategory: e.target.value
+                  })}
+                >
+                  <option value="">All Brackets</option>
+                  {weightCategoryOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
               </div>
             )}
 
@@ -153,7 +215,7 @@ const BreedSellerFilterMenu = ({
               onClick={() => {
                 setBreedSearch("")
                 setSellerSearch("")
-                onChange({ breed: [], seller: [] })
+                onChange({ breed: [], seller: [], status: "", weightCategory: "" })
               }}
             >
               Reset

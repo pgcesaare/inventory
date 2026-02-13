@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
-import { Download, Search } from "lucide-react"
+import { Download, Search, X } from "lucide-react"
 import * as XLSX from "xlsx"
 import { saveAs } from "file-saver"
 import { useToken } from "../api/useToken"
@@ -8,18 +8,22 @@ import { getRanchById } from "../api/ranches"
 import { getInventoryByRanch, getManageCalvesByRanch, getCalfMovementHistory, updateCalf, deleteCalf } from "../api/calves"
 import { useAppContext } from "../context"
 import { formatDateMMDDYYYY } from "../utils/dateFormat"
+import { isDateInDateRange } from "../utils/dateRange"
 import MainDataTable from "../components/shared/mainDataTable"
 import DateFilterMenu from "../components/shared/dateFilterMenu"
 import BreedSellerFilterMenu from "../components/shared/breedSellerFilterMenu"
+import SearchOptionsMenu from "../components/shared/searchOptionsMenu"
 import CalfDetailPanel from "../components/calves/calfDetailPanel"
 import CalfEditModal from "../components/calves/calfEditModal"
+import { RanchPageSkeleton } from "../components/shared/loadingSkeletons"
+import { getWeightCategoryLabel, normalizeWeightCategories } from "../utils/weightCategories"
 
 const Inventory = () => {
 
     const { id } = useParams()
     const [searchParams] = useSearchParams()
     const token = useToken()
-    const { ranch, setRanch } = useAppContext()
+    const { ranch, setRanch, confirmAction, showSuccess, showError } = useAppContext()
     const [calves, setCalves] = useState([])
     const [loadingInventory, setLoadingInventory] = useState(true)
     const [selectedCalf, setSelectedCalf] = useState(null)
@@ -35,6 +39,7 @@ const Inventory = () => {
     const [bulkTagSearch, setBulkTagSearch] = useState("")
     const [manageBreed, setManageBreed] = useState([])
     const [manageSeller, setManageSeller] = useState([])
+    const [manageStatus, setManageStatus] = useState("")
     const [dateFrom, setDateFrom] = useState("")
     const [dateTo, setDateTo] = useState("")
     const [bulkField, setBulkField] = useState("purchasePrice")
@@ -42,8 +47,12 @@ const Inventory = () => {
     const [bulkLoading, setBulkLoading] = useState(false)
     const [manageMessage, setManageMessage] = useState("")
     const [mainSearch, setMainSearch] = useState("")
+    const [mainSearchMode, setMainSearchMode] = useState("single")
+    const [mainSearchMatch, setMainSearchMatch] = useState("contains")
+    const [mainSearchField, setMainSearchField] = useState("all")
     const [mainBreed, setMainBreed] = useState([])
     const [mainSeller, setMainSeller] = useState([])
+    const [mainWeightCategory, setMainWeightCategory] = useState("")
     const [mainDateFrom, setMainDateFrom] = useState("")
     const [mainDateTo, setMainDateTo] = useState("")
     const [mainRowLimit, setMainRowLimit] = useState(15)
@@ -104,7 +113,9 @@ const Inventory = () => {
       { key: "breed", label: "Breed" },
       { key: "sex", label: "Sex" },
       { key: "purchasePrice", label: "Purchase Price" },
-      { key: "daysOnFeed", label: "Days On Feed", align: "right" }
+      { key: "daysOnFeed", label: "Days On Feed", align: "right" },
+      { key: "weight", label: "Weight" },
+      { key: "weightCategory", label: "Bracket" }
     ]
 
     const formatDateCell = (value) => {
@@ -151,31 +162,80 @@ const Inventory = () => {
       () => [...new Set(calves.map((calf) => calf.seller).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))),
       [calves]
     )
+    const effectiveWeightCategories = useMemo(
+      () => normalizeWeightCategories(ranch?.weightCategories),
+      [ranch?.weightCategories]
+    )
+    const weightCategoryOptions = useMemo(
+      () => effectiveWeightCategories.map((category) => category.label).filter(Boolean),
+      [effectiveWeightCategories]
+    )
 
-    const applyCalfFilters = (source, filters) => {
+    const normalizeSearchValue = useCallback(
+      (value) => String(value ?? "").toLowerCase().trim().replace(/[\s-]+/g, ""),
+      []
+    )
+    const getMainSearchPlaceholder = useCallback((mode, field) => {
+      const byField = {
+        visualTag: mode === "multiple" ? "TAG-001, TAG-002, TAG-003" : "Search visual tag",
+        eid: mode === "multiple" ? "982000001, 982000002, 982000003" : "Search EID",
+        backTag: mode === "multiple" ? "B-001, B-002, B-003" : "Search back tag",
+        all: mode === "multiple" ? "TAG-001, TAG-002, TAG-003" : "Search tag / EID / back tag",
+      }
+      return byField[field] || byField.all
+    }, [])
+
+    const applyCalfFilters = useCallback((source, filters) => {
       const asArray = (value) => {
         if (Array.isArray(value)) return value
         if (value === null || value === undefined || value === "") return []
         return [value]
       }
       return source.filter((calf) => {
-        const haystack = `${calf.primaryID || ""} ${calf.EID || ""} ${calf.backTag || calf.originalID || ""}`.toLowerCase()
-        const searchMatch = !filters.search || haystack.includes(filters.search.toLowerCase())
+        const searchMode = filters.searchMode || "single"
+        const searchMatchMode = filters.searchMatch || "contains"
+        const searchValue = normalizeSearchValue(filters.search)
+        const searchTokens = String(filters.search || "")
+          .split(/[,\n]+/)
+          .map((value) => normalizeSearchValue(value))
+          .filter(Boolean)
+        const searchableValuesByField = {
+          visualTag: [calf.primaryID, calf.visualTag],
+          eid: [calf.EID, calf.eid],
+          backTag: [calf.backTag, calf.originalID],
+        }
+        const searchField = filters.searchField || "all"
+        const searchableValues = (
+          searchField === "all"
+            ? [...searchableValuesByField.visualTag, ...searchableValuesByField.eid, ...searchableValuesByField.backTag]
+            : (searchableValuesByField[searchField] || [])
+        )
+          .map((value) => normalizeSearchValue(value))
+          .filter(Boolean)
+        const matchesSearchValue = (candidateValue) => (
+          searchMatchMode === "exact"
+            ? searchableValues.some((value) => value === candidateValue)
+            : searchableValues.some((value) => value.includes(candidateValue))
+        )
+        const searchMatch = !searchValue
+          ? true
+          : searchMode === "multiple"
+            ? searchTokens.length === 0 || searchTokens.some((token) => matchesSearchValue(token))
+            : matchesSearchValue(searchValue)
         const breedFilterValues = asArray(filters.breed)
         const sellerFilterValues = asArray(filters.seller)
+        const weightCategoryFilter = String(filters.weightCategory || "")
         const breedMatch = breedFilterValues.length === 0 || breedFilterValues.includes(calf.breed)
         const sellerMatch = sellerFilterValues.length === 0 || sellerFilterValues.includes(calf.seller)
+        const weightCategory = getWeightCategoryLabel(calf.weight, filters.weightCategories)
+        const weightCategoryMatch = !weightCategoryFilter || weightCategory === weightCategoryFilter
 
         const rawDate = calf.dateIn || calf.placedDate
-        const calfDate = rawDate ? new Date(rawDate) : null
-        const fromLimit = filters.dateFrom ? new Date(`${filters.dateFrom}T00:00:00`) : null
-        const toLimit = filters.dateTo ? new Date(`${filters.dateTo}T23:59:59`) : null
-        const dateFromMatch = !fromLimit || (calfDate && calfDate >= fromLimit)
-        const dateToMatch = !toLimit || (calfDate && calfDate <= toLimit)
+        const dateRangeMatch = isDateInDateRange(rawDate, filters.dateFrom, filters.dateTo)
 
-        return searchMatch && breedMatch && sellerMatch && dateFromMatch && dateToMatch
+        return searchMatch && breedMatch && sellerMatch && weightCategoryMatch && dateRangeMatch
       })
-    }
+    }, [normalizeSearchValue])
 
     const sortRowsBy = (sourceRows, sortConfig, accessorMap = {}) => {
       if (!sortConfig?.key) return sourceRows
@@ -215,17 +275,28 @@ const Inventory = () => {
     }
 
     const filteredMainCalves = useMemo(
-      () => applyCalfFilters(calves, { search: mainSearch, breed: mainBreed, seller: mainSeller, dateFrom: mainDateFrom, dateTo: mainDateTo }),
-      [calves, mainSearch, mainBreed, mainSeller, mainDateFrom, mainDateTo]
+      () => applyCalfFilters(calves, {
+        search: mainSearch,
+        searchMode: mainSearchMode,
+        searchMatch: mainSearchMatch,
+        searchField: mainSearchField,
+        breed: mainBreed,
+        seller: mainSeller,
+        weightCategory: mainWeightCategory,
+        weightCategories: effectiveWeightCategories,
+        dateFrom: mainDateFrom,
+        dateTo: mainDateTo,
+      }),
+      [applyCalfFilters, calves, mainSearch, mainSearchMode, mainSearchMatch, mainSearchField, mainBreed, mainSeller, mainWeightCategory, effectiveWeightCategories, mainDateFrom, mainDateTo]
     )
     const filteredBreedCalves = useMemo(
-      () => applyCalfFilters(calves, { search: "", breed: [], seller: breedFilterSeller, dateFrom: breedDateFrom, dateTo: breedDateTo }),
-      [calves, breedFilterSeller, breedDateFrom, breedDateTo]
+      () => applyCalfFilters(calves, { search: "", breed: breedFilterSeller, seller: [], dateFrom: breedDateFrom, dateTo: breedDateTo }),
+      [applyCalfFilters, calves, breedFilterSeller, breedDateFrom, breedDateTo]
     )
 
     const filteredSellerCalves = useMemo(
-      () => applyCalfFilters(calves, { search: "", breed: sellerFilterBreed, seller: [], dateFrom: sellerDateFrom, dateTo: sellerDateTo }),
-      [calves, sellerFilterBreed, sellerDateFrom, sellerDateTo]
+      () => applyCalfFilters(calves, { search: "", breed: [], seller: sellerFilterBreed, dateFrom: sellerDateFrom, dateTo: sellerDateTo }),
+      [applyCalfFilters, calves, sellerFilterBreed, sellerDateFrom, sellerDateTo]
     )
 
     const tableRows = useMemo(() => (
@@ -236,6 +307,8 @@ const Inventory = () => {
         backTag: calf.backTag || calf.originalID || "-",
         dateIn: formatDateCell(calf.dateIn || calf.placedDate),
         daysOnFeed: calculateDaysOnFeed(calf),
+        weightCategory: getWeightCategoryLabel(calf.weight, effectiveWeightCategories),
+        weight: calf.weight ?? "-",
         breed: calf.breed
           ? calf.breed.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
           : "-",
@@ -244,7 +317,7 @@ const Inventory = () => {
           : "-",
         purchasePrice: formatMoneyCell(calf.purchasePrice ?? calf.price)
       }))
-    ), [filteredMainCalves])
+    ), [filteredMainCalves, effectiveWeightCategories])
 
     const breedSummaryRows = useMemo(() => {
       const accumulator = new Map()
@@ -280,6 +353,32 @@ const Inventory = () => {
     const activeSellers = [...new Set(calves.map((calf) => calf.seller).filter(Boolean))].length
 
     const getCalfDate = (calf) => calf.dateIn || calf.placedDate || null
+    const getManageStatusKey = useCallback((calf) => {
+      const rawStatus = String(calf?.status || "").trim().toLowerCase()
+      const hasDeathDate = Boolean(calf?.deathDate || calf?.death_date)
+      const currentRouteRanchId = Number(id)
+      const calfCurrentRanchId = Number(calf?.currentRanchID)
+
+      if (hasDeathDate || rawStatus === "dead" || rawStatus === "deceased") {
+        return "dead"
+      }
+
+      if (
+        rawStatus === "feeding" &&
+        Number.isFinite(currentRouteRanchId) &&
+        Number.isFinite(calfCurrentRanchId) &&
+        calfCurrentRanchId !== currentRouteRanchId
+      ) {
+        return "shipped"
+      }
+
+      if (rawStatus === "feeding") return "feeding"
+      if (rawStatus === "shipped") return "shipped"
+      if (rawStatus === "sold") return "sold"
+      if (rawStatus === "alive") return "alive"
+
+      return rawStatus || ""
+    }, [id])
 
     const filteredManageCalves = useMemo(() => {
       const bulkTokens = bulkTagSearch
@@ -294,17 +393,13 @@ const Inventory = () => {
         const searchModeMatch = manageSearchMode === "multi" ? multiTagMatch : tagMatch
         const breedMatch = manageBreed.length === 0 || manageBreed.includes(calf.breed)
         const sellerMatch = manageSeller.length === 0 || manageSeller.includes(calf.seller)
+        const statusMatch = !manageStatus || getManageStatusKey(calf) === manageStatus
 
         const rawDate = getCalfDate(calf)
-        const calfDate = rawDate ? new Date(rawDate) : null
-        const fromLimit = dateFrom ? new Date(`${dateFrom}T00:00:00`) : null
-        const toLimit = dateTo ? new Date(`${dateTo}T23:59:59`) : null
-
-        if (fromLimit && (!calfDate || calfDate < fromLimit)) return false
-        if (toLimit && (!calfDate || calfDate > toLimit)) return false
-        return searchModeMatch && breedMatch && sellerMatch
+        if (!isDateInDateRange(rawDate, dateFrom, dateTo)) return false
+        return searchModeMatch && breedMatch && sellerMatch && statusMatch
       })
-    }, [calves, manageSearchMode, tagSearch, bulkTagSearch, manageBreed, manageSeller, dateFrom, dateTo])
+    }, [calves, manageSearchMode, tagSearch, bulkTagSearch, manageBreed, manageSeller, manageStatus, getManageStatusKey, dateFrom, dateTo])
     const sortedManageCalves = useMemo(
       () => sortRowsBy(
         filteredManageCalves,
@@ -317,10 +412,10 @@ const Inventory = () => {
           breed: (row) => row.breed,
           purchase: (row) => row.price ?? row.purchasePrice,
           sell: (row) => row.sellPrice,
-          status: (row) => row.status,
+          status: (row) => getManageStatusKey(row),
         }
       ),
-      [filteredManageCalves, manageSort]
+      [filteredManageCalves, manageSort, getManageStatusKey]
     )
     const sortedBreedSummaryRows = useMemo(
       () => sortRowsBy(breedSummaryRows, breedSummarySort),
@@ -332,16 +427,26 @@ const Inventory = () => {
     )
 
     const manageStatusBadge = (calf) => {
-      const rawStatus = String(calf?.status || "").trim().toLowerCase()
-      const isDead = Boolean(calf?.deathDate) || rawStatus === "dead" || rawStatus === "deceased"
-      const isFeeding = rawStatus === "feeding" && !isDead
+      const statusKey = getManageStatusKey(calf)
 
-      if (isDead) {
+      if (statusKey === "dead") {
         return <span className="inline-flex items-center rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">Dead</span>
       }
 
-      if (isFeeding) {
+      if (statusKey === "feeding") {
         return <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">Feeding</span>
+      }
+
+      if (statusKey === "shipped") {
+        return <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-700">Shipped</span>
+      }
+
+      if (statusKey === "sold") {
+        return <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">Sold</span>
+      }
+
+      if (statusKey === "alive") {
+        return <span className="inline-flex items-center rounded-full border border-lime-200 bg-lime-100 px-2 py-0.5 text-xs font-semibold text-lime-700">Alive</span>
       }
 
       return calf?.status || "-"
@@ -406,6 +511,7 @@ const Inventory = () => {
           : selectedCalf?.sex || "-"
       },
       { label: "Weight", value: selectedCalfInfo.weight ?? "-" },
+      { label: "Weight Category", value: getWeightCategoryLabel(selectedCalfInfo.weight, effectiveWeightCategories) },
       {
         label: "Purchase Price",
         value: selectedCalfInfo.purchasePrice || selectedCalfInfo.price
@@ -426,6 +532,8 @@ const Inventory = () => {
       { label: "Death Date", value: formatDate(selectedCalfInfo.deathDate) },
       { label: "Pre Days On Feed", value: selectedCalfInfo.preDaysOnFeed ?? "-" },
       { label: "Days On Feed", value: calculateDaysOnFeed(selectedCalfInfo) },
+      { label: "Created At", value: formatDate(selectedCalfInfo.createdAt) },
+      { label: "Updated At", value: formatDate(selectedCalfInfo.updatedAt) },
     ] : []
 
     const toNumberOrNull = (value) => {
@@ -487,8 +595,13 @@ const Inventory = () => {
     const handleExportExcel = () => {
       const exportSource = applyCalfFilters(calves, {
         search: mainSearch,
+        searchMode: mainSearchMode,
+        searchMatch: mainSearchMatch,
+        searchField: mainSearchField,
         breed: mainBreed,
         seller: mainSeller,
+        weightCategory: mainWeightCategory,
+        weightCategories: effectiveWeightCategories,
         dateFrom: mainDateFrom,
         dateTo: mainDateTo,
       })
@@ -498,6 +611,7 @@ const Inventory = () => {
         EID: calf.EID || calf.eid || "",
         "Back Tag": calf.backTag || calf.originalID || "",
         "Date In": formatDateForExport(calf.dateIn || calf.placedDate),
+        "Weight Category": getWeightCategoryLabel(calf.weight, effectiveWeightCategories),
         Breed: calf.breed || "",
         Sex: calf.sex || "",
         Weight: calf.weight ?? "",
@@ -603,9 +717,12 @@ const Inventory = () => {
     const handleBulkDeleteSelected = async () => {
       if (!token || selectedIds.length === 0 || bulkLoading) return
 
-      const confirmed = window.confirm(
-        `Delete ${selectedIds.length} selected calves? This action cannot be undone.`
-      )
+      const confirmed = await confirmAction({
+        title: "Delete Calves",
+        message: `Delete ${selectedIds.length} selected calves? This action cannot be undone.`,
+        confirmText: "YES",
+        cancelText: "NO",
+      })
       if (!confirmed) return
 
       setBulkLoading(true)
@@ -635,8 +752,10 @@ const Inventory = () => {
 
         if (failedCount > 0 && deletedCount === 0) {
           setManageMessage(`Bulk delete failed. Failed: ${failedCount}. Check backend logs or API error details.`)
+          showError(`Bulk delete failed. Failed: ${failedCount}.`)
         } else {
           setManageMessage(`Bulk delete complete. Deleted: ${deletedCount}, Failed: ${failedCount}.`)
+          showSuccess(`Bulk delete complete. Deleted: ${deletedCount}, Failed: ${failedCount}.`, "Deleted")
         }
       } finally {
         setBulkLoading(false)
@@ -645,7 +764,12 @@ const Inventory = () => {
 
     const handleDeleteCalf = async () => {
       if (!selectedCalf?.id || !token) return
-      const confirmed = window.confirm(`Delete calf "${selectedCalf.visualTag || selectedCalf.id}"? This action cannot be undone.`)
+      const confirmed = await confirmAction({
+        title: "Delete Calf",
+        message: `Delete calf "${selectedCalf.visualTag || selectedCalf.id}"? This action cannot be undone.`,
+        confirmText: "YES",
+        cancelText: "NO",
+      })
       if (!confirmed) return
 
       try {
@@ -653,13 +777,15 @@ const Inventory = () => {
         setCalves((prev) => prev.filter((calf) => calf.id !== selectedCalf.id))
         setSelectedIds((prev) => prev.filter((idValue) => idValue !== selectedCalf.id))
         closeDetailPanel()
+        showSuccess(`Calf "${selectedCalf.visualTag || selectedCalf.id}" deleted successfully.`, "Deleted")
       } catch (error) {
         console.error("Error deleting calf:", error)
+        showError(error?.response?.data?.message || "Could not delete calf.")
       }
     }
 
-    if (!ranch) {
-      return <div>Loading ranch data...</div>
+    if (!ranch || loadingInventory) {
+      return <RanchPageSkeleton />
     }
 
     return (
@@ -686,7 +812,7 @@ const Inventory = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-5 xl:grid-cols-[120px_1.2fr_170px_170px_100px] gap-2 rounded-xl border border-primary-border/20 bg-primary-border/5 p-3">
+            <div className="grid grid-cols-1 md:grid-cols-5 xl:grid-cols-[120px_1.2fr_260px_170px_100px] gap-2 rounded-xl border border-primary-border/20 bg-primary-border/5 p-3">
               <div>
                 <label className="text-xs font-semibold text-secondary">Search Type</label>
                 <select
@@ -705,7 +831,7 @@ const Inventory = () => {
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-secondary" />
                   <input
-                    className="w-full h-[36px] rounded-md border border-primary-border/40 pl-8 pr-2.5 py-1.5 text-xs"
+                    className="w-full h-[36px] rounded-md border border-primary-border/40 pl-8 pr-9 py-1.5 text-xs"
                     placeholder={
                       manageSearchMode === "multi"
                         ? "TAG-001, TAG-002, TAG-003"
@@ -720,6 +846,19 @@ const Inventory = () => {
                       setTagSearch(e.target.value)
                     }}
                   />
+                  {(tagSearch || bulkTagSearch) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTagSearch("")
+                        setBulkTagSearch("")
+                      }}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
+                      aria-label="Clear search"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="pt-[22px]">
@@ -727,11 +866,15 @@ const Inventory = () => {
                   className="w-full h-[36px]"
                   breed={manageBreed}
                   seller={manageSeller}
+                  status={manageStatus}
                   breedOptions={breedOptions}
                   sellerOptions={sellerOptions}
-                  onChange={({ breed, seller }) => {
+                  statusOptions={["feeding", "shipped", "sold", "alive", "dead"]}
+                  showStatus
+                  onChange={({ breed, seller, status }) => {
                     setManageBreed(Array.isArray(breed) ? breed : (breed ? [breed] : []))
                     setManageSeller(Array.isArray(seller) ? seller : (seller ? [seller] : []))
+                    setManageStatus(status || "")
                   }}
                 />
               </div>
@@ -754,6 +897,7 @@ const Inventory = () => {
                     setBulkTagSearch("")
                     setManageBreed([])
                     setManageSeller([])
+                    setManageStatus("")
                     setDateFrom("")
                     setDateTo("")
                   }}
@@ -877,10 +1021,10 @@ const Inventory = () => {
             <div className="rounded-2xl border border-primary-border/30 bg-white p-5 shadow-sm">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-secondary">Manage Calves</p>
-                  <h2 className="mt-1 text-xl font-semibold text-primary-text">Current Ranch Manage Calves</h2>
+                  <p className="text-xs uppercase tracking-wide text-secondary">Inventory</p>
+                  <h2 className="mt-1 text-xl font-semibold text-primary-text">Current Ranch Inventory</h2>
                   <p className="mt-1 text-sm text-secondary">
-                    Explore active calves, then drill down into movement history and editing.
+                    Explore active calves in inventory, then drill down into movement history and editing.
                   </p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 min-w-[320px]">
@@ -900,7 +1044,7 @@ const Inventory = () => {
               </div>
             </div>
             <MainDataTable
-              title={loadingInventory ? "Loading manage calves..." : "Manage Calves"}
+              title="Inventory"
               rows={tableRows}
               enablePagination
               pageSize={mainRowLimit}
@@ -908,26 +1052,63 @@ const Inventory = () => {
               onRowClick={handleRowClick}
               selectedRowKey={selectedCalf?.id}
               filters={
-                <div className="flex flex-col xl:flex-row xl:items-stretch xl:justify-between gap-3">
-                  <div className="relative xl:w-[320px]">
-                    <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-secondary" />
-                    <input
-                      className="w-full rounded-xl border border-primary-border/40 pl-9 pr-3 py-2.5 text-sm"
-                      placeholder="Search tag / EID / back tag"
-                      value={mainSearch}
-                      onChange={(e) => setMainSearch(e.target.value)}
+                <div className="flex flex-col xl:flex-wrap xl:flex-row xl:items-start xl:justify-between gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-[180px_minmax(0,1fr)] gap-3 xl:flex-1 xl:min-w-[380px]">
+                    <SearchOptionsMenu
+                      searchMode={mainSearchMode}
+                      searchMatch={mainSearchMatch}
+                      searchField={mainSearchField}
+                      fieldOptions={[
+                        { value: "all", label: "All" },
+                        { value: "visualTag", label: "Visual Tag" },
+                        { value: "eid", label: "EID" },
+                        { value: "backTag", label: "Back Tag" },
+                      ]}
+                      onChange={({ searchMode, searchMatch, searchField }) => {
+                        setMainSearchMode(searchMode)
+                        setMainSearchMatch(searchMatch)
+                        setMainSearchField(searchField || "all")
+                      }}
                     />
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-secondary" />
+                      <input
+                        className="h-[40px] w-full rounded-xl border border-primary-border/40 pl-9 pr-9 text-xs"
+                        placeholder={getMainSearchPlaceholder(mainSearchMode, mainSearchField)}
+                        value={mainSearch}
+                        onChange={(e) => setMainSearch(e.target.value)}
+                      />
+                      {mainSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setMainSearch("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
+                          aria-label="Clear search"
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    {mainSearchMode === "multiple" && (
+                      <p className="sm:col-span-2 text-xs text-secondary">
+                        Multiple values must be separated by comma.
+                      </p>
+                    )}
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-5 xl:grid-cols-[160px_160px_130px_130px_120px] gap-3 xl:justify-end">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 xl:flex-1 xl:min-w-[620px]">
                     <BreedSellerFilterMenu
                       className="w-full"
                       breed={mainBreed}
                       seller={mainSeller}
+                      weightCategory={mainWeightCategory}
                       breedOptions={breedOptions}
                       sellerOptions={sellerOptions}
-                      onChange={({ breed, seller }) => {
+                      weightCategoryOptions={weightCategoryOptions}
+                      showWeightCategory
+                      onChange={({ breed, seller, weightCategory }) => {
                         setMainBreed(Array.isArray(breed) ? breed : (breed ? [breed] : []))
                         setMainSeller(Array.isArray(seller) ? seller : (seller ? [seller] : []))
+                        setMainWeightCategory(weightCategory || "")
                       }}
                     />
                     <DateFilterMenu
@@ -941,12 +1122,16 @@ const Inventory = () => {
                     />
                     <input
                       type="number"
-                      min={0}
                       max={1000}
                       className="w-full rounded-xl border border-primary-border/40 px-3 py-2 text-xs"
                       value={mainRowLimit}
                       onChange={(e) => {
-                        const nextValue = Number(e.target.value)
+                        const rawValue = e.target.value
+                        if (rawValue === "") {
+                          setMainRowLimit("")
+                          return
+                        }
+                        const nextValue = Number(rawValue)
                         if (!Number.isFinite(nextValue)) return
                         setMainRowLimit(Math.max(0, Math.min(1000, nextValue)))
                       }}
@@ -957,15 +1142,19 @@ const Inventory = () => {
                       onClick={handleExportExcel}
                     >
                       <Download className="h-3.5 w-3.5" />
-                      Export Excel
+                      Export
                     </button>
                     <button
                       type="button"
                       className="w-full rounded-xl border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
                       onClick={() => {
                         setMainSearch("")
+                        setMainSearchMode("single")
+                        setMainSearchMatch("contains")
+                        setMainSearchField("all")
                         setMainBreed([])
                         setMainSeller([])
+                        setMainWeightCategory("")
                         setMainDateFrom("")
                         setMainDateTo("")
                       }}
@@ -986,13 +1175,13 @@ const Inventory = () => {
                   <div className="flex flex-wrap lg:flex-nowrap items-stretch gap-2">
                     <BreedSellerFilterMenu
                       className="w-[150px] shrink-0"
-                      breed={[]}
-                      seller={breedFilterSeller}
-                      showBreed={false}
-                      showSeller
-                      sellerOptions={sellerOptions}
-                      onChange={({ seller }) => {
-                        setBreedFilterSeller(Array.isArray(seller) ? seller : (seller ? [seller] : []))
+                      breed={breedFilterSeller}
+                      seller={[]}
+                      showBreed
+                      showSeller={false}
+                      breedOptions={breedOptions}
+                      onChange={({ breed }) => {
+                        setBreedFilterSeller(Array.isArray(breed) ? breed : (breed ? [breed] : []))
                       }}
                     />
                     <DateFilterMenu
@@ -1059,17 +1248,17 @@ const Inventory = () => {
                 </div>
                 <div className="p-3 border-b border-primary-border/20 bg-primary-border/5">
                   <div className="flex flex-wrap lg:flex-nowrap items-stretch gap-2">
-                    <BreedSellerFilterMenu
-                      className="w-[150px] shrink-0"
-                      breed={sellerFilterBreed}
-                      seller={[]}
-                      showBreed
-                      showSeller={false}
-                      breedOptions={breedOptions}
-                      onChange={({ breed }) => {
-                        setSellerFilterBreed(Array.isArray(breed) ? breed : (breed ? [breed] : []))
-                      }}
-                    />
+                <BreedSellerFilterMenu
+                  className="w-[150px] shrink-0"
+                  breed={[]}
+                  seller={sellerFilterBreed}
+                  showBreed={false}
+                  showSeller
+                  sellerOptions={sellerOptions}
+                  onChange={({ seller }) => {
+                    setSellerFilterBreed(Array.isArray(seller) ? seller : (seller ? [seller] : []))
+                  }}
+                />
                     <DateFilterMenu
                       className="w-[150px] shrink-0"
                       dateFrom={sellerDateFrom}

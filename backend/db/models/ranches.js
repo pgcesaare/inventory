@@ -26,6 +26,12 @@ const RanchesSchema = {
     type: DataTypes.STRING,
     unique: false,
   },
+  zipCode: {
+    allowNull: true,
+    type: DataTypes.STRING,
+    unique: false,
+    field: 'zip_code',
+  },
   state: {
     allowNull: true,
     type: DataTypes.STRING,
@@ -41,8 +47,6 @@ const RanchesSchema = {
     type: DataTypes.STRING,
     unique: false,
   },
-  
-
 }
 class Ranches extends Model {
 
@@ -72,6 +76,10 @@ class Ranches extends Model {
             foreignKey: 'toRanchID',
             as: 'movementsTo'
         })
+    this.hasMany(models.RanchWeightCategories, {
+            foreignKey: 'ranchID',
+            as: 'weightCategories'
+        })
 
     }
 
@@ -80,7 +88,9 @@ class Ranches extends Model {
         sequelize,
         tableName: RANCHES_TABLE,
         modelName: 'Ranches',
-        timestamps: false
+        timestamps: true,
+        createdAt: 'created_at',
+        updatedAt: 'updated_at'
       }
     }
   }

@@ -99,7 +99,9 @@ class Loads extends Model {
         sequelize,
         tableName: LOADS_TABLE,
         modelName: 'Loads',
-        timestamps: false
+        timestamps: true,
+        createdAt: 'created_at',
+        updatedAt: 'updated_at'
       }
     }
   }

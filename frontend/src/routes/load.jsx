@@ -62,6 +62,17 @@ const Load = () => {
         setSelectedLoad(null)
     }
 
+    const handleUpdated = () => {
+        setRefreshKey((prev) => prev + 1)
+    }
+
+    const handleDeleted = () => {
+        setRefreshKey((prev) => prev + 1)
+        setIsSlideOpen(false)
+        setSelectedLoad(null)
+        setSelectedLoadData(null)
+    }
+
   return (
     <div className="relative w-full h-full bg-background">
       <div className="flex h-full w-full flex-col lg:flex-row">
@@ -96,7 +107,7 @@ const Load = () => {
               onClose={handleClose}
             >
               <div className="p-4 md:p-5">
-                <LoadDetails load={selectedLoadData} />
+                <LoadDetails load={selectedLoadData} onUpdated={handleUpdated} onDeleted={handleDeleted} />
               </div>
             </LoadSlideContainer>
           </div>

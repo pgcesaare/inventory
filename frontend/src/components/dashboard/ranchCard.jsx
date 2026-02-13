@@ -2,15 +2,18 @@ import { useState, useRef, useEffect } from "react"
 import { MapPin, MoreVertical, Trash2, Pencil } from "lucide-react"
 
 const RanchCard = ({
+  ranchId,
   ranchName,
   ranchAddress,
   ranchCity,
+  ranchZipCode,
   ranchState,
   ranchColor,
   totalCattle,
   activeLots,
   managerName,
   lastUpdated,
+  isHighlighted = false,
   onClick,
   onDelete,
   onEdit
@@ -33,8 +36,9 @@ const RanchCard = ({
 
   return(
     <div 
+      id={ranchId ? `ranch-card-${ranchId}` : undefined}
       onClick={onClick}
-      className="
+      className={`
         w-full
         flex flex-col
         gap-5
@@ -48,7 +52,9 @@ const RanchCard = ({
         transition-all duration-300
         cursor-pointer
         group
-      "
+        ${isHighlighted ? "ring-2 ring-action-blue/70 ring-offset-2" : ""}
+      `}
+      data-highlighted={isHighlighted ? "true" : "false"}
     >
 
       {/* Header Color Section */}
@@ -154,7 +160,7 @@ const RanchCard = ({
           <div className="leading-snug">
             <p>{ranchAddress}</p>
             <p className="opacity-70">
-              {ranchCity}, {ranchState}
+              {ranchCity}, {ranchState}{ranchZipCode ? ` ${ranchZipCode}` : ""}
             </p>
           </div>
         </div>

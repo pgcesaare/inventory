@@ -22,7 +22,7 @@ import { deleteRanch, getRanches, updateRanch } from "../../api/ranches"
 import EditRanchModal from "../../components/dashboard/editRanchModal"
 
 export function RanchSwitcher({ currentRanch, ranches }) {
-  const { setShowCreateNewRanchPopup, setRanch, setRanches } = useAppContext()
+  const { setShowCreateNewRanchPopup, setRanch, setRanches, confirmAction, showSuccess, showError } = useAppContext()
   const { isMobile } = useSidebar()
   const navigate = useNavigate()
   const token = useToken()
@@ -70,7 +70,12 @@ export function RanchSwitcher({ currentRanch, ranches }) {
 
   const handleDeleteCurrentRanch = async () => {
     if (!token || !currentRanch) return
-    const confirmed = window.confirm(`Delete ranch "${currentRanch.name}"? This action cannot be undone.`)
+    const confirmed = await confirmAction({
+      title: "Delete Ranch",
+      message: `Delete ranch "${currentRanch.name}"? This action cannot be undone.`,
+      confirmText: "YES",
+      cancelText: "NO",
+    })
     if (!confirmed) return
 
     try {
@@ -90,9 +95,10 @@ export function RanchSwitcher({ currentRanch, ranches }) {
       if (setRanch) setRanch(nextRanch)
       if (setRanches) setRanches(rest)
       navigate(`/dashboard/ranch/${nextRanch.id}/inventory`)
+      showSuccess(`Ranch "${currentRanch.name}" deleted successfully.`, "Deleted")
     } catch (error) {
       console.error("Error deleting ranch:", error)
-      window.alert(error?.response?.data?.message || "Could not delete ranch.")
+      showError(error?.response?.data?.message || "Could not delete ranch.")
     }
   }
 

@@ -1,16 +1,21 @@
-import React, { useEffect, useMemo, useState } from "react"
-import { Download, Trash2, X } from "lucide-react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
+import { Download, Search, Trash2, X } from "lucide-react"
 import { useParams } from "react-router-dom"
 import * as XLSX from "xlsx"
 import { saveAs } from "file-saver"
 
 import { useToken } from "../api/useToken"
 import { getRanchById } from "../api/ranches"
-import { createCalf } from "../api/calves"
+import { createCalf, getManageCalvesByRanch } from "../api/calves"
 import { useAppContext } from "../context"
 import DragAndDrop from "../components/add-calves/dragAndDrop"
 import MainDataTable from "../components/shared/mainDataTable"
 import SummaryCards from "../components/shared/summaryCards"
+import SearchOptionsMenu from "../components/shared/searchOptionsMenu"
+import BreedSellerFilterMenu from "../components/shared/breedSellerFilterMenu"
+import DateFilterMenu from "../components/shared/dateFilterMenu"
+import { RanchPageSkeleton } from "../components/shared/loadingSkeletons"
+import { isDateInDateRange } from "../utils/dateRange"
 
 const VALID_SEX = new Set(["bull", "heifer", "steer", "freeMartin"])
 
@@ -26,6 +31,7 @@ const HEADER_MAP = {
   ranchtag: "primaryID",
   primaryid: "primaryID",
   eid: "EID",
+  eidoptional: "EID",
   backtag: "backTag",
   datein: "dateIn",
   breed: "breed",
@@ -36,6 +42,7 @@ const HEADER_MAP = {
   seller: "seller",
   dairy: "dairy",
   status: "status",
+  statusoptional: "status",
   proteinlevel: "proteinLevel",
   proteintest: "proteinTest",
   deathdate: "deathDate",
@@ -44,8 +51,6 @@ const HEADER_MAP = {
   dayesonfeed: "preDaysOnFeed",
   daysonfeed: "preDaysOnFeed",
   predaysonfeed: "preDaysOnFeed",
-  originranchid: "originRanchID",
-  currentranchid: "currentRanchID",
 }
 
 const toKey = (value) =>
@@ -54,6 +59,7 @@ const toKey = (value) =>
     .replace(/[^a-z0-9]/g, "")
 
 const cleanText = (value) => String(value ?? "").trim()
+const toTitleCase = (value) => cleanText(value).toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
 
 const normalizeSex = (value) => {
   const raw =
@@ -105,16 +111,59 @@ const normalizeStatus = (value) => {
   return ""
 }
 
-const parseNumber = (value) => {
+const coerceNumeric = (value) => {
   if (value === null || value === undefined || value === "") return undefined
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : undefined
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined
+  if (typeof value === "boolean") return undefined
+
+  let text = String(value).trim()
+  if (!text) return undefined
+
+  // Excel/CSV often includes a leading apostrophe to force text.
+  text = text.replace(/^'+/, "")
+  // Drop whitespace and common unit/currency noise but keep separators/sign.
+  text = text.replace(/\s+/g, "")
+  text = text.replace(/[$€£%]|lb?s?|kg/gi, "")
+
+  // Handle negative values represented as (123.45)
+  let isNegative = false
+  const negativeParenMatch = text.match(/^\((.*)\)$/)
+  if (negativeParenMatch) {
+    isNegative = true
+    text = negativeParenMatch[1]
+  }
+
+  const lastComma = text.lastIndexOf(",")
+  const lastDot = text.lastIndexOf(".")
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    // Use whichever separator appears last as decimal separator.
+    if (lastComma > lastDot) {
+      text = text.replace(/\./g, "").replace(",", ".")
+    } else {
+      text = text.replace(/,/g, "")
+    }
+  } else if (lastComma >= 0) {
+    const commaAsDecimal = /,\d{1,4}$/.test(text)
+    text = commaAsDecimal ? text.replace(",", ".") : text.replace(/,/g, "")
+  }
+
+  // Keep only numeric characters, decimal point, and minus sign.
+  text = text.replace(/[^0-9.-]/g, "")
+  if (!text || text === "-" || text === "." || text === "-.") return undefined
+
+  let parsed = Number(text)
+  if (!Number.isFinite(parsed)) return undefined
+  if (isNegative) parsed = -Math.abs(parsed)
+  return parsed
 }
 
+const parseNumber = (value) => coerceNumeric(value)
+
 const parseInteger = (value) => {
-  if (value === null || value === undefined || value === "") return undefined
-  const parsed = parseInt(value, 10)
-  return Number.isFinite(parsed) ? parsed : undefined
+  const parsed = coerceNumeric(value)
+  if (!Number.isFinite(parsed)) return undefined
+  return Math.trunc(parsed)
 }
 
 const normalizeDate = (value) => {
@@ -150,14 +199,11 @@ const buildTemplateFile = () => {
     "Date In",
     "Breed",
     "Sex",
-    "Status (optional)",
     "Weight",
     "Purchase Price",
     "Seller",
     "Dairy",
-    "Protein Level",
-    "Protein Test",
-    "Pre-Days-On-Feed",
+    "Status (optional)",
   ]
 
   const sampleRow = [
@@ -167,14 +213,11 @@ const buildTemplateFile = () => {
     "2026-01-20",
     "holstein",
     "bull",
-    "feeding",
     420.5,
     1450.5,
     "Acme Farms",
     "Sunny Dairy",
-    3.1,
-    "pass",
-    0,
+    "feeding",
   ]
 
   const worksheet = XLSX.utils.aoa_to_sheet([headers, sampleRow])
@@ -191,6 +234,11 @@ const fieldClass = "w-full rounded-md border border-primary-border/40 px-3 py-2 
 const RequiredMark = () => <span className="ml-0.5 text-red-600">*</span>
 const clearButtonClass = "absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
 const clearableInputClass = `${fieldClass} pr-9`
+const bulkBtnBase = "inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+const bulkBtnPrimary = `${bulkBtnBase} border border-action-blue/80 bg-action-blue text-white hover:bg-action-blue/90`
+const bulkBtnSuccess = `${bulkBtnBase} border border-emerald-700/70 bg-emerald-600 text-white hover:bg-emerald-700`
+const bulkBtnSecondary = `${bulkBtnBase} border border-primary-border/40 bg-surface text-primary-text hover:bg-primary-border/10`
+const bulkBtnDanger = `${bulkBtnBase} border border-red-700/60 bg-red-600 text-white hover:bg-red-700`
 const SINGLE_FORM_INITIAL = {
   primaryID: "",
   EID: "",
@@ -210,7 +258,7 @@ const SINGLE_FORM_INITIAL = {
 const AddCalves = () => {
   const { id } = useParams()
   const token = useToken()
-  const { ranch, setRanch } = useAppContext()
+  const { ranch, setRanch, showSuccess, showError, confirmAction } = useAppContext()
 
   const [mode, setMode] = useState("bulk")
 
@@ -220,6 +268,21 @@ const AddCalves = () => {
   const [isParsing, setIsParsing] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [result, setResult] = useState({ created: 0, failed: 0, errors: [] })
+  const [duplicateAlerts, setDuplicateAlerts] = useState([])
+  const [bulkStep, setBulkStep] = useState("upload")
+  const [selectedBulkRowNumbers, setSelectedBulkRowNumbers] = useState([])
+  const [lastDeletedRows, setLastDeletedRows] = useState([])
+  const [uploadReportRows, setUploadReportRows] = useState([])
+  const [previewSearch, setPreviewSearch] = useState("")
+  const [previewSearchMode, setPreviewSearchMode] = useState("single")
+  const [previewSearchMatch, setPreviewSearchMatch] = useState("contains")
+  const [previewSearchField, setPreviewSearchField] = useState("all")
+  const [previewBreed, setPreviewBreed] = useState([])
+  const [previewSeller, setPreviewSeller] = useState([])
+  const [previewStatus, setPreviewStatus] = useState("")
+  const [previewDateFrom, setPreviewDateFrom] = useState("")
+  const [previewDateTo, setPreviewDateTo] = useState("")
+  const [previewRowLimit, setPreviewRowLimit] = useState(15)
 
   const [singleForm, setSingleForm] = useState(SINGLE_FORM_INITIAL)
   const [singleLoading, setSingleLoading] = useState(false)
@@ -248,6 +311,7 @@ const AddCalves = () => {
   const [groupLoading, setGroupLoading] = useState(false)
   const [groupResult, setGroupResult] = useState({ created: 0, failed: 0, errors: [] })
   const [groupErrors, setGroupErrors] = useState({})
+  const existingIdentifierRef = useRef({ tag: new Set(), eid: new Set(), backTag: new Set() })
 
   useEffect(() => {
     if (!token || !id || ranch?.id === Number(id)) return
@@ -263,6 +327,33 @@ const AddCalves = () => {
 
     fetchRanch()
   }, [id, token, ranch, setRanch])
+
+  useEffect(() => {
+    if (!token || !id) return
+    const fetchExistingIdentifiers = async () => {
+      try {
+        const data = await getManageCalvesByRanch(id, token)
+        const safeData = Array.isArray(data) ? data : []
+        const normalizeId = (value) => String(value || "").toLowerCase().trim().replace(/[\s-]+/g, "")
+        const tag = new Set()
+        const eid = new Set()
+        const backTag = new Set()
+        safeData.forEach((calf) => {
+          const tagKey = normalizeId(calf.primaryID || calf.visualTag)
+          const eidKey = normalizeId(calf.EID || calf.eid)
+          const backTagKey = normalizeId(calf.backTag || calf.originalID)
+          if (tagKey) tag.add(tagKey)
+          if (eidKey) eid.add(eidKey)
+          if (backTagKey) backTag.add(backTagKey)
+        })
+        existingIdentifierRef.current = { tag, eid, backTag }
+      } catch (error) {
+        console.error("Error fetching existing calf identifiers:", error)
+      }
+    }
+
+    fetchExistingIdentifiers()
+  }, [token, id])
 
   const summaryItems = useMemo(
     () => {
@@ -310,19 +401,132 @@ const AddCalves = () => {
   )
 
   const previewRows = useMemo(
-    () =>
-      validRows.map((row) => ({
-        visualTag: row.payload.primaryID,
-        eid: row.payload.EID || "-",
-        breed: row.payload.breed || "-",
-        sex: row.payload.sex || "-",
-      })),
+    () => validRows.map((row) => ({
+      id: row.rowNumber,
+      rowNumber: row.rowNumber,
+      primaryID: row.payload.primaryID || "-",
+      EID: row.payload.EID || "-",
+      backTag: row.payload.backTag || "-",
+      dateIn: row.payload.dateIn || "-",
+      breed: row.payload.breed ? toTitleCase(row.payload.breed) : "-",
+      sex: row.payload.sex || "-",
+      status: row.payload.status === "deceased" ? "dead" : (row.payload.status || "-"),
+      weight: row.payload.weight ?? "-",
+      purchasePrice: row.payload.purchasePrice ?? "-",
+      seller: row.payload.seller || "-",
+      dairy: row.payload.dairy || "-",
+      proteinLevel: row.payload.proteinLevel ?? "-",
+      proteinTest: row.payload.proteinTest || "-",
+      preDaysOnFeed: row.payload.preDaysOnFeed ?? "-",
+    })),
     [validRows]
   )
+
+  const selectedBulkSet = useMemo(
+    () => new Set(selectedBulkRowNumbers),
+    [selectedBulkRowNumbers]
+  )
+  const allValidRowsSelected = useMemo(
+    () => validRows.length > 0 && validRows.every((row) => selectedBulkSet.has(row.rowNumber)),
+    [validRows, selectedBulkSet]
+  )
+
+  const previewColumns = useMemo(() => ([
+    { key: "select", label: "Select", sortable: false },
+    { key: "primaryID", label: "Visual Tag" },
+    { key: "EID", label: "EID" },
+    { key: "backTag", label: "Back Tag" },
+    { key: "dateIn", label: "Date In" },
+    { key: "breed", label: "Breed" },
+    { key: "sex", label: "Sex" },
+    { key: "weight", label: "Weight" },
+    { key: "purchasePrice", label: "Purchase Price" },
+    { key: "seller", label: "Seller" },
+    { key: "dairy", label: "Dairy" },
+    { key: "status", label: "Status" },
+  ]), [])
+
+  const previewBreedOptions = useMemo(
+    () => [...new Set(previewRows.map((row) => row.breed).filter((value) => value && value !== "-"))],
+    [previewRows]
+  )
+  const previewSellerOptions = useMemo(
+    () => [...new Set(previewRows.map((row) => row.seller).filter((value) => value && value !== "-"))],
+    [previewRows]
+  )
+  const previewStatusOptions = useMemo(
+    () => [...new Set(previewRows.map((row) => row.status).filter((value) => value && value !== "-"))],
+    [previewRows]
+  )
+const normalizeSearchValue = (value) => String(value ?? "").toLowerCase().trim().replace(/[\s-]+/g, "")
+const getSearchPlaceholder = (mode, field) => {
+  const byField = {
+    visualTag: mode === "multiple" ? "TAG-001, TAG-002, TAG-003" : "Search visual tag",
+    eid: mode === "multiple" ? "982000001, 982000002, 982000003" : "Search EID",
+    backTag: mode === "multiple" ? "B-001, B-002, B-003" : "Search back tag",
+    all: mode === "multiple" ? "TAG-001, TAG-002, TAG-003" : "Search tag / EID / back tag",
+  }
+  return byField[field] || byField.all
+}
+  const filteredPreviewRows = useMemo(() => {
+    return previewRows.filter((row) => {
+      const searchValue = normalizeSearchValue(previewSearch)
+      const searchTokens = String(previewSearch || "")
+        .split(/[,\n]+/)
+        .map((value) => normalizeSearchValue(value))
+        .filter(Boolean)
+      const searchableValuesByField = {
+        visualTag: [row.primaryID],
+        eid: [row.EID],
+        backTag: [row.backTag],
+      }
+      const searchableValues = (
+        previewSearchField === "all"
+          ? [row.primaryID, row.EID, row.backTag]
+          : (searchableValuesByField[previewSearchField] || [])
+      ).map((value) => normalizeSearchValue(value)).filter(Boolean)
+
+      const matches = (candidateValue) => (
+        previewSearchMatch === "exact"
+          ? searchableValues.some((value) => value === candidateValue)
+          : searchableValues.some((value) => value.includes(candidateValue))
+      )
+      const searchMatch = !searchValue
+        ? true
+        : previewSearchMode === "multiple"
+          ? searchTokens.length === 0 || searchTokens.some((token) => matches(token))
+          : matches(searchValue)
+
+      const breedMatch = previewBreed.length === 0 || previewBreed.includes(row.breed)
+      const sellerMatch = previewSeller.length === 0 || previewSeller.includes(row.seller)
+      const statusMatch = !previewStatus || row.status === previewStatus
+
+      const rowDate = row.dateIn && row.dateIn !== "-" ? row.dateIn : ""
+      const dateRangeMatch = isDateInDateRange(rowDate, previewDateFrom, previewDateTo)
+
+      return searchMatch && breedMatch && sellerMatch && statusMatch && dateRangeMatch
+    })
+  }, [
+    previewRows,
+    previewSearch,
+    previewSearchMode,
+    previewSearchMatch,
+    previewSearchField,
+    previewBreed,
+    previewSeller,
+    previewStatus,
+    previewDateFrom,
+    previewDateTo,
+  ])
 
   const handleFileSelect = (selectedFile) => {
     setFile(selectedFile)
     setResult({ created: 0, failed: 0, errors: [] })
+    setDuplicateAlerts([])
+    setSelectedBulkRowNumbers([])
+    setLastDeletedRows([])
+    setUploadReportRows([])
+    setBulkStep("upload")
   }
 
   const clearFile = () => {
@@ -330,6 +534,11 @@ const AddCalves = () => {
     setValidRows([])
     setInvalidRows([])
     setResult({ created: 0, failed: 0, errors: [] })
+    setDuplicateAlerts([])
+    setSelectedBulkRowNumbers([])
+    setLastDeletedRows([])
+    setUploadReportRows([])
+    setBulkStep("upload")
   }
 
   const parseExcel = async () => {
@@ -348,7 +557,10 @@ const AddCalves = () => {
 
       const nextValidRows = []
       const nextInvalidRows = []
+      const nextDuplicateAlerts = []
       const ranchId = Number(id)
+      const seenInFile = { tag: new Set(), eid: new Set(), backTag: new Set() }
+      const normalizeIdentifier = (value) => String(value || "").toLowerCase().trim().replace(/[\s-]+/g, "")
 
       rawRows.forEach((rawRow, index) => {
         const rowNumber = index + 2
@@ -360,14 +572,15 @@ const AddCalves = () => {
           EID: cleanText(row.EID),
           backTag: cleanText(row.backTag),
           dateIn: normalizeDate(row.dateIn),
-          breed: cleanText(row.breed).toLowerCase(),
+          breed: toTitleCase(row.breed),
           sex: normalizeSex(row.sex),
           weight: parseNumber(row.weight),
           purchasePrice: parseNumber(row.purchasePrice),
           seller: cleanText(row.seller),
           dairy: cleanText(row.dairy),
-          currentRanchID: parseInteger(row.currentRanchID) || ranchId,
-          originRanchID: parseInteger(row.originRanchID) || ranchId,
+          // Ranch IDs from Excel are ignored; both are always set by current route ranch.
+          currentRanchID: ranchId,
+          originRanchID: ranchId,
           status: normalizeStatus(row.status) || "feeding",
           proteinLevel: parseNumber(row.proteinLevel),
           proteinTest: cleanText(row.proteinTest).toLowerCase() || "pending",
@@ -388,6 +601,38 @@ const AddCalves = () => {
           errors.push(`Status value "${cleanText(row.status)}" is invalid. Use feeding, alive, sold, shipped, or dead/deceased`)
         }
 
+        const tagKey = normalizeIdentifier(payload.primaryID)
+        const eidKey = normalizeIdentifier(payload.EID)
+        const backTagKey = normalizeIdentifier(payload.backTag)
+
+        if (tagKey) {
+          if (existingIdentifierRef.current.tag.has(tagKey)) {
+            nextDuplicateAlerts.push({ rowNumber, message: `Visual Tag "${payload.primaryID}" already exists in this ranch` })
+          } else if (seenInFile.tag.has(tagKey)) {
+            nextDuplicateAlerts.push({ rowNumber, message: `Visual Tag "${payload.primaryID}" is duplicated in this file` })
+          } else {
+            seenInFile.tag.add(tagKey)
+          }
+        }
+        if (eidKey) {
+          if (existingIdentifierRef.current.eid.has(eidKey)) {
+            nextDuplicateAlerts.push({ rowNumber, message: `EID "${payload.EID}" already exists in this ranch` })
+          } else if (seenInFile.eid.has(eidKey)) {
+            nextDuplicateAlerts.push({ rowNumber, message: `EID "${payload.EID}" is duplicated in this file` })
+          } else {
+            seenInFile.eid.add(eidKey)
+          }
+        }
+        if (backTagKey) {
+          if (existingIdentifierRef.current.backTag.has(backTagKey)) {
+            nextDuplicateAlerts.push({ rowNumber, message: `Back Tag "${payload.backTag}" already exists in this ranch` })
+          } else if (seenInFile.backTag.has(backTagKey)) {
+            nextDuplicateAlerts.push({ rowNumber, message: `Back Tag "${payload.backTag}" is duplicated in this file` })
+          } else {
+            seenInFile.backTag.add(backTagKey)
+          }
+        }
+
         if (errors.length > 0) {
           nextInvalidRows.push({ rowNumber, errors, rawRow })
           return
@@ -398,10 +643,16 @@ const AddCalves = () => {
 
       setValidRows(nextValidRows)
       setInvalidRows(nextInvalidRows)
+      setDuplicateAlerts(nextDuplicateAlerts)
+      setSelectedBulkRowNumbers([])
+      setBulkStep(nextInvalidRows.length > 0 ? "fix" : "review")
     } catch (error) {
       console.error("Error parsing file:", error)
       setValidRows([])
       setInvalidRows([{ rowNumber: "-", errors: ["Could not parse file"], rawRow: {} }])
+      setDuplicateAlerts([])
+      setSelectedBulkRowNumbers([])
+      setBulkStep("upload")
     } finally {
       setIsParsing(false)
     }
@@ -409,27 +660,147 @@ const AddCalves = () => {
 
   const handleCreateBulk = async () => {
     if (!token || validRows.length === 0 || isSubmitting) return
+    const confirmed = await confirmAction({
+      title: "Create Calves",
+      message: `Create ${validRows.length} calves from validated rows?`,
+      confirmText: "YES",
+      cancelText: "NO",
+    })
+    if (!confirmed) return
     setIsSubmitting(true)
 
     let created = 0
     let failed = 0
     const errors = []
+    const reportRows = []
 
     for (const row of validRows) {
       try {
         await createCalf(row.payload, token)
         created += 1
+        reportRows.push({
+          rowNumber: row.rowNumber,
+          visualTag: row.payload.primaryID,
+          eid: row.payload.EID || "",
+          result: "created",
+          message: "",
+        })
       } catch (error) {
         failed += 1
+        const message = error?.response?.data?.message || error?.message || "Unknown error"
         errors.push({
           rowNumber: row.rowNumber,
-          message: error?.response?.data?.message || error?.message || "Unknown error",
+          message,
+        })
+        reportRows.push({
+          rowNumber: row.rowNumber,
+          visualTag: row.payload.primaryID,
+          eid: row.payload.EID || "",
+          result: "failed",
+          message,
         })
       }
     }
 
+    setUploadReportRows(reportRows)
     setResult({ created, failed, errors })
+    if (created > 0) {
+      showSuccess(`Bulk upload finished. Created: ${created}, Failed: ${failed}.`, "Upload Complete")
+    } else if (failed > 0) {
+      showError(`Bulk upload failed. Failed: ${failed}.`)
+    }
     setIsSubmitting(false)
+    setBulkStep("create")
+  }
+
+  const toggleBulkRowSelection = (rowNumber) => {
+    setSelectedBulkRowNumbers((prev) => (
+      prev.includes(rowNumber)
+        ? prev.filter((value) => value !== rowNumber)
+        : [...prev, rowNumber]
+    ))
+  }
+
+  const toggleSelectAllValidRows = () => {
+    setSelectedBulkRowNumbers((prev) => (
+      prev.length === validRows.length
+        ? []
+        : validRows.map((row) => row.rowNumber)
+    ))
+  }
+
+  const handleDeleteSelectedRows = async () => {
+    if (selectedBulkRowNumbers.length === 0) return
+    const confirmed = await confirmAction({
+      title: "Remove Rows",
+      message: `Remove ${selectedBulkRowNumbers.length} selected rows from this upload?`,
+      confirmText: "YES",
+      cancelText: "NO",
+    })
+    if (!confirmed) return
+    const selectedSet = new Set(selectedBulkRowNumbers)
+    const removed = validRows.filter((row) => selectedSet.has(row.rowNumber))
+    setValidRows((prev) => prev.filter((row) => !selectedSet.has(row.rowNumber)))
+    setLastDeletedRows(removed)
+    setSelectedBulkRowNumbers([])
+  }
+
+  const undoDeleteSelectedRows = () => {
+    if (lastDeletedRows.length === 0) return
+    setValidRows((prev) => (
+      [...prev, ...lastDeletedRows].sort((a, b) => Number(a.rowNumber) - Number(b.rowNumber))
+    ))
+    setLastDeletedRows([])
+  }
+
+  const applyAutoFixes = () => {
+    setValidRows((prev) => prev.map((row) => {
+      const next = { ...row.payload }
+      next.primaryID = cleanText(next.primaryID)
+      next.EID = cleanText(next.EID)
+      next.backTag = cleanText(next.backTag)
+      next.breed = toTitleCase(next.breed)
+      next.seller = cleanText(next.seller)
+      next.dairy = cleanText(next.dairy)
+      next.sex = normalizeSex(next.sex) || next.sex
+      next.status = normalizeStatus(next.status) || "feeding"
+      return { ...row, payload: next }
+    }))
+    showSuccess("Auto-fix applied to valid rows.", "Auto-fix")
+    setBulkStep("review")
+  }
+
+  const updateValidRowField = (rowNumber, key, value) => {
+    setValidRows((prev) => prev.map((row) => {
+      if (row.rowNumber !== rowNumber) return row
+      const payload = { ...row.payload }
+      if (key === "status") {
+        payload.status = value === "dead" ? "deceased" : normalizeStatus(value) || "feeding"
+      } else if (key === "sex") {
+        payload.sex = normalizeSex(value) || payload.sex
+      } else if (key === "dateIn") {
+        payload.dateIn = normalizeDate(value) || payload.dateIn
+      } else if (key === "breed") {
+        payload[key] = toTitleCase(value)
+      } else if (key === "seller") {
+        payload[key] = cleanText(value)
+      } else {
+        payload[key] = value
+      }
+      return { ...row, payload }
+    }))
+  }
+
+  const downloadUploadReport = () => {
+    if (uploadReportRows.length === 0) return
+    const worksheet = XLSX.utils.json_to_sheet(uploadReportRows)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Upload Report")
+    const output = XLSX.write(workbook, { type: "array", bookType: "xlsx" })
+    saveAs(
+      new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+      `calves-upload-report-${new Date().toISOString().slice(0, 10)}.xlsx`
+    )
   }
 
   const handleSingleChange = (key, value) => {
@@ -496,10 +867,12 @@ const AddCalves = () => {
       await createCalf(payload, token)
       setSingleMessage(`Calf ${payload.primaryID} created successfully.`)
       setSingleMessageTone("success")
+      showSuccess(`Calf ${payload.primaryID} created successfully.`, "Created")
       setSingleForm(SINGLE_FORM_INITIAL)
     } catch (error) {
       setSingleMessage(error?.response?.data?.message || "Error creating calf.")
       setSingleMessageTone("error")
+      showError(error?.response?.data?.message || "Error creating calf.")
     } finally {
       setSingleLoading(false)
     }
@@ -596,16 +969,21 @@ const AddCalves = () => {
       }
 
       setGroupResult({ created, failed, errors })
+      if (created > 0) {
+        showSuccess(`Quick group finished. Created: ${created}, Failed: ${failed}.`, "Upload Complete")
+      } else if (failed > 0) {
+        showError(`Quick group failed. Failed: ${failed}.`)
+      }
     } finally {
       setGroupLoading(false)
     }
   }
 
-  if (!ranch) return <div>Loading ranch data...</div>
+  if (!ranch) return <RanchPageSkeleton />
 
   return (
-    <div className="w-full min-h-screen bg-background flex justify-center px-6 py-10">
-      <div className="w-full max-w-7xl flex flex-col gap-6">
+    <div className="w-full max-w-full min-h-screen bg-background flex justify-center overflow-x-hidden px-4 md:px-6 py-10">
+      <div className="w-full max-w-7xl min-w-0 overflow-x-hidden flex flex-col gap-6">
         <div className="rounded-2xl border border-primary-border/30 bg-white shadow-sm p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div>
             <h2 className="text-title-h3 text-primary-text">Add Calves</h2>
@@ -617,7 +995,7 @@ const AddCalves = () => {
           <button
             type="button"
             onClick={buildTemplateFile}
-            className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-primary-border/40 bg-white text-sm font-medium text-primary-text hover:bg-primary-border/10 transition-colors duration-200 cursor-pointer"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-primary-border/40 bg-surface px-2.5 py-1.5 text-xs font-medium text-primary-text transition-colors duration-200 hover:bg-primary-border/10 cursor-pointer"
           >
             <Download className="h-4 w-4" />
             Download Template
@@ -630,9 +1008,9 @@ const AddCalves = () => {
               key={item.id}
               type="button"
               onClick={() => setMode(item.id)}
-              className={`px-3 py-2 rounded-xl text-sm font-medium cursor-pointer transition-colors ${
+              className={`rounded-lg px-2.5 py-1.5 text-xs font-medium cursor-pointer transition-colors ${
                 mode === item.id
-                  ? "bg-action-blue text-white"
+                  ? "border border-action-blue/80 bg-action-blue text-white"
                   : "border border-primary-border/40 text-primary-text hover:bg-primary-border/10"
               }`}
             >
@@ -645,44 +1023,115 @@ const AddCalves = () => {
 
         {mode === "bulk" && (
           <>
+            <div className="w-full min-w-0 rounded-2xl border border-primary-border/30 bg-white p-4 shadow-sm">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-secondary">Bulk Flow</p>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                {[
+                  { key: "upload", label: "1. Upload" },
+                  { key: "review", label: "2. Review" },
+                  { key: "fix", label: "3. Fix" },
+                  { key: "create", label: "4. Create" },
+                ].map((step) => (
+                  <div
+                    key={step.key}
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold text-center transition-colors ${
+                      bulkStep === step.key
+                        ? "border-action-blue/70 bg-action-blue/10 text-action-blue shadow-sm"
+                        : "border-primary-border/30 bg-white text-secondary"
+                    }`}
+                  >
+                    {step.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <DragAndDrop
               onFileSelect={handleFileSelect}
               selectedFile={file}
               disabled={isParsing || isSubmitting}
             />
 
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={parseExcel}
-                disabled={!file || isParsing || isSubmitting}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-action-blue/80 bg-action-blue text-sm font-medium text-white hover:bg-action-blue/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
-              >
-                {isParsing ? "Processing file..." : "Validate File"}
-              </button>
+            <div className="w-full min-w-0 overflow-x-hidden rounded-2xl border border-primary-border/30 bg-white p-4 shadow-sm space-y-4">
+              <div className="w-full min-w-0 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={parseExcel}
+                  disabled={!file || isParsing || isSubmitting}
+                  className={bulkBtnPrimary}
+                >
+                  {isParsing ? "Processing file..." : "Validate File"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateBulk}
+                  disabled={validRows.length === 0 || isSubmitting || isParsing}
+                  className={bulkBtnSuccess}
+                >
+                  {isSubmitting ? "Creating calves..." : `Create ${validRows.length} calves`}
+                </button>
+                <button
+                  type="button"
+                  onClick={clearFile}
+                  disabled={!file || isParsing || isSubmitting}
+                  className={bulkBtnSecondary}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Clear
+                </button>
+              </div>
 
-              <button
-                type="button"
-                onClick={clearFile}
-                disabled={!file || isParsing || isSubmitting}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-primary-border/40 bg-white text-sm font-medium text-primary-text hover:bg-primary-border/10 disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
-              >
-                <Trash2 className="h-4 w-4" />
-                Clear
-              </button>
+              <div className="h-px w-full bg-primary-border/20" />
 
-              <button
-                type="button"
-                onClick={handleCreateBulk}
-                disabled={validRows.length === 0 || isSubmitting || isParsing}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-action-blue/80 bg-action-blue text-sm font-medium text-white hover:bg-action-blue/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
-              >
-                {isSubmitting ? "Creating calves..." : `Create ${validRows.length} calves`}
-              </button>
+              <div className="w-full min-w-0 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDeleteSelectedRows}
+                  disabled={selectedBulkRowNumbers.length === 0 || isSubmitting || isParsing}
+                  className={bulkBtnDanger}
+                >
+                  Delete ({selectedBulkRowNumbers.length})
+                </button>
+                {lastDeletedRows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={undoDeleteSelectedRows}
+                    className={bulkBtnSecondary}
+                  >
+                    Undo delete ({lastDeletedRows.length})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={applyAutoFixes}
+                  disabled={validRows.length === 0 || isSubmitting || isParsing}
+                  className={bulkBtnSecondary}
+                >
+                  Auto-fix
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBulkStep("create")}
+                  disabled={validRows.length === 0}
+                  className={bulkBtnSecondary}
+                >
+                  Continue to Create
+                </button>
+                {uploadReportRows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={downloadUploadReport}
+                    className={bulkBtnSecondary}
+                  >
+                    <Download className="h-4 w-4" />
+                    Download Upload Report
+                  </button>
+                )}
+              </div>
             </div>
 
             {invalidRows.length > 0 && (
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+              <div className="w-full min-w-0 overflow-x-hidden rounded-2xl border border-red-200 bg-red-50/80 p-4 break-words">
                 <h3 className="text-sm font-semibold text-red-700">Validation errors</h3>
                 <ul className="mt-2 space-y-1 text-xs text-red-700">
                   {invalidRows.slice(0, 15).map((item) => (
@@ -697,8 +1146,25 @@ const AddCalves = () => {
               </div>
             )}
 
+            {duplicateAlerts.length > 0 && (
+              <div className="w-full min-w-0 overflow-x-hidden rounded-2xl border border-red-200 bg-red-50/80 p-4 break-words">
+                <h3 className="text-sm font-semibold text-red-700">Duplicate alerts</h3>
+                <p className="mt-1 text-xs text-red-700">Duplicates are allowed and will still be uploaded.</p>
+                <ul className="mt-2 space-y-1 text-xs text-red-700">
+                  {duplicateAlerts.slice(0, 15).map((item, idx) => (
+                    <li key={`duplicate-alert-${item.rowNumber}-${idx}`}>
+                      Row {item.rowNumber}: {item.message}
+                    </li>
+                  ))}
+                  {duplicateAlerts.length > 15 && (
+                    <li>...and {duplicateAlerts.length - 15} more duplicate alerts.</li>
+                  )}
+                </ul>
+              </div>
+            )}
+
             {result.failed > 0 && (
-              <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4">
+              <div className="w-full min-w-0 overflow-x-hidden rounded-2xl border border-yellow-200 bg-yellow-50/80 p-4 break-words">
                 <h3 className="text-sm font-semibold text-yellow-700">Rows failed during creation</h3>
                 <ul className="mt-2 space-y-1 text-xs text-yellow-800">
                   {result.errors.slice(0, 15).map((item) => (
@@ -710,12 +1176,201 @@ const AddCalves = () => {
               </div>
             )}
 
-            <MainDataTable title="Valid rows preview" rows={previewRows} />
+            <div className="w-full min-w-0 overflow-x-hidden">
+              <MainDataTable
+                title="Valid rows preview"
+                rows={filteredPreviewRows}
+                columns={previewColumns}
+                enablePagination
+                pageSize={previewRowLimit}
+                clipHorizontalOverflow
+                disableHorizontalScroll
+                tableClassName="w-full table-fixed"
+                headerCellClassName="whitespace-nowrap"
+                bodyCellClassName="whitespace-normal break-words align-top"
+                cellRenderers={{
+                select: (row) => (
+                  <input
+                    type="checkbox"
+                    checked={selectedBulkSet.has(row.rowNumber)}
+                    onChange={() => toggleBulkRowSelection(row.rowNumber)}
+                    className="h-4 w-4 cursor-pointer"
+                    aria-label={`Include row ${row.rowNumber}`}
+                  />
+                ),
+                dateIn: (row) => (
+                  <input
+                    type="date"
+                    className="w-full min-w-0 rounded-md border border-primary-border/30 px-2 py-1 text-xs"
+                    value={row.dateIn === "-" ? "" : row.dateIn}
+                    onChange={(e) => updateValidRowField(row.rowNumber, "dateIn", e.target.value)}
+                  />
+                ),
+                breed: (row) => (
+                  <input
+                    className="w-full min-w-0 rounded-md border border-primary-border/30 px-2 py-1 text-xs"
+                    value={row.breed === "-" ? "" : row.breed}
+                    onChange={(e) => updateValidRowField(row.rowNumber, "breed", e.target.value)}
+                  />
+                ),
+                sex: (row) => (
+                  <select
+                    className="w-full min-w-0 rounded-md border border-primary-border/30 px-2 py-1 text-xs"
+                    value={row.sex === "-" ? "bull" : row.sex}
+                    onChange={(e) => updateValidRowField(row.rowNumber, "sex", e.target.value)}
+                  >
+                    {SEX_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                ),
+                status: (row) => (
+                  <select
+                    className="w-full min-w-0 rounded-md border border-primary-border/30 px-2 py-1 text-xs"
+                    value={row.status === "-" ? "feeding" : row.status}
+                    onChange={(e) => updateValidRowField(row.rowNumber, "status", e.target.value)}
+                  >
+                    <option value="feeding">Feeding</option>
+                    <option value="alive">Alive</option>
+                    <option value="sold">Sold</option>
+                    <option value="shipped">Shipped</option>
+                    <option value="dead">Dead</option>
+                  </select>
+                ),
+                seller: (row) => (
+                  <input
+                    className="w-full min-w-0 rounded-md border border-primary-border/30 px-2 py-1 text-xs"
+                    value={row.seller === "-" ? "" : row.seller}
+                    onChange={(e) => updateValidRowField(row.rowNumber, "seller", e.target.value)}
+                  />
+                ),
+              }}
+                headerRenderers={{
+                select: () => (
+                  <div className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={allValidRowsSelected}
+                      onChange={toggleSelectAllValidRows}
+                      onClick={(event) => event.stopPropagation()}
+                      className="h-4 w-4 cursor-pointer"
+                      aria-label="Select all rows"
+                    />
+                    <span>Select</span>
+                  </div>
+                ),
+                }}
+                filters={(
+                  <div className="w-full min-w-0 flex flex-col gap-3">
+                    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+                    <SearchOptionsMenu
+                      className="w-full"
+                      searchMode={previewSearchMode}
+                      searchMatch={previewSearchMatch}
+                      searchField={previewSearchField}
+                      fieldOptions={[
+                        { value: "all", label: "All" },
+                        { value: "visualTag", label: "Visual Tag" },
+                        { value: "eid", label: "EID" },
+                        { value: "backTag", label: "Back Tag" },
+                      ]}
+                      onChange={({ searchMode, searchMatch, searchField }) => {
+                        setPreviewSearchMode(searchMode)
+                        setPreviewSearchMatch(searchMatch)
+                        setPreviewSearchField(searchField || "all")
+                      }}
+                    />
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-secondary" />
+                      <input
+                        className="h-[40px] w-full rounded-xl border border-primary-border/40 pl-9 pr-9 text-xs"
+                        placeholder={getSearchPlaceholder(previewSearchMode, previewSearchField)}
+                        value={previewSearch}
+                        onChange={(e) => setPreviewSearch(e.target.value)}
+                      />
+                      {previewSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewSearch("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
+                          aria-label="Clear search"
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    {previewSearchMode === "multiple" && (
+                      <p className="sm:col-span-2 text-xs text-secondary">Multiple values must be separated by comma.</p>
+                    )}
+                  </div>
+                    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <BreedSellerFilterMenu
+                      className="w-full"
+                      breed={previewBreed}
+                      seller={previewSeller}
+                      status={previewStatus}
+                      breedOptions={previewBreedOptions}
+                      sellerOptions={previewSellerOptions}
+                      statusOptions={previewStatusOptions}
+                      showStatus
+                      onChange={({ breed, seller, status }) => {
+                        setPreviewBreed(Array.isArray(breed) ? breed : (breed ? [breed] : []))
+                        setPreviewSeller(Array.isArray(seller) ? seller : (seller ? [seller] : []))
+                        setPreviewStatus(status || "")
+                      }}
+                    />
+                    <DateFilterMenu
+                      className="w-full"
+                      dateFrom={previewDateFrom}
+                      dateTo={previewDateTo}
+                      onChange={({ from, to }) => {
+                        setPreviewDateFrom(from)
+                        setPreviewDateTo(to)
+                      }}
+                    />
+                    <input
+                      type="number"
+                      max={1000}
+                      className="w-full rounded-xl border border-primary-border/40 px-3 py-2 text-xs"
+                      value={previewRowLimit}
+                      onChange={(e) => {
+                        const rawValue = e.target.value
+                        if (rawValue === "") {
+                          setPreviewRowLimit("")
+                          return
+                        }
+                        const nextValue = Number(rawValue)
+                        if (!Number.isFinite(nextValue)) return
+                        setPreviewRowLimit(Math.max(0, Math.min(1000, nextValue)))
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="w-full rounded-xl border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
+                      onClick={() => {
+                        setPreviewSearch("")
+                        setPreviewSearchMode("single")
+                        setPreviewSearchMatch("contains")
+                        setPreviewSearchField("all")
+                        setPreviewBreed([])
+                        setPreviewSeller([])
+                        setPreviewStatus("")
+                        setPreviewDateFrom("")
+                        setPreviewDateTo("")
+                      }}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                  </div>
+                )}
+              />
+            </div>
           </>
         )}
 
         {mode === "single" && (
-          <div className="rounded-2xl border border-primary-border/30 bg-white shadow-sm p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="w-full min-w-0 overflow-x-hidden rounded-2xl border border-primary-border/30 bg-white shadow-sm p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-semibold text-secondary">Visual Tag<RequiredMark /></label>
               <div className="relative">
@@ -864,7 +1519,7 @@ const AddCalves = () => {
                 type="button"
                 onClick={handleResetSingleForm}
                 disabled={singleLoading}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-primary-border/40 bg-white text-sm font-medium text-primary-text hover:bg-primary-border/10 disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-primary-border/40 bg-surface px-2.5 py-1.5 text-xs font-medium text-primary-text hover:bg-primary-border/10 disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
               >
                 Erase all
               </button>
@@ -872,7 +1527,7 @@ const AddCalves = () => {
                 type="button"
                 onClick={handleCreateSingle}
                 disabled={singleLoading}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-action-blue/80 bg-action-blue text-sm font-medium text-white hover:bg-action-blue/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-action-blue/80 bg-action-blue px-2.5 py-1.5 text-xs font-medium text-white hover:bg-action-blue/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
               >
                 {singleLoading ? "Creating calf..." : "Create calf"}
               </button>
@@ -886,7 +1541,7 @@ const AddCalves = () => {
         )}
 
         {mode === "group" && (
-          <div className="rounded-2xl border border-primary-border/30 bg-white shadow-sm p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="w-full min-w-0 overflow-x-hidden rounded-2xl border border-primary-border/30 bg-white shadow-sm p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="lg:col-span-2 rounded-xl border border-primary-border/30 bg-primary-border/5 p-4">
               <h3 className="text-sm font-semibold text-primary-text">Quick Group Instructions</h3>
               <ol className="mt-2 list-decimal pl-5 text-xs text-secondary space-y-1">
@@ -986,7 +1641,7 @@ const AddCalves = () => {
                 type="button"
                 onClick={handleCreateGroup}
                 disabled={groupLoading}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-action-blue/80 bg-action-blue text-sm font-medium text-white hover:bg-action-blue/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-action-blue/80 bg-action-blue px-2.5 py-1.5 text-xs font-medium text-white hover:bg-action-blue/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
               >
                 {groupLoading ? "Creating group..." : "Create group"}
               </button>

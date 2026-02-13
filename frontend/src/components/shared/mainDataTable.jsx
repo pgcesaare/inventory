@@ -17,6 +17,13 @@ const MainDataTable = ({
   filters,
   enablePagination = false,
   pageSize = 50,
+  cellRenderers = {},
+  headerRenderers = {},
+  tableClassName = "",
+  headerCellClassName = "",
+  bodyCellClassName = "",
+  clipHorizontalOverflow = false,
+  disableHorizontalScroll = false,
 }) => {
   const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" })
   const [currentPage, setCurrentPage] = useState(1)
@@ -58,7 +65,7 @@ const MainDataTable = ({
     })
   }, [rows, sortConfig])
 
-  const parsedPageSize = Number(pageSize)
+  const parsedPageSize = pageSize === "" ? Number.NaN : Number(pageSize)
   const safePageSize = Number.isFinite(parsedPageSize)
     ? Math.max(0, Math.min(1000, parsedPageSize))
     : 15
@@ -96,7 +103,7 @@ const MainDataTable = ({
   }, [currentPage, totalPages])
 
   return (
-    <div className="relative rounded-2xl border border-primary-border/30 bg-white shadow-sm overflow-visible">
+    <div className={`relative w-full max-w-full rounded-2xl border border-primary-border/30 bg-white shadow-sm ${clipHorizontalOverflow ? "overflow-x-hidden overflow-y-visible" : "overflow-visible"}`}>
       <div className="px-4 py-3 border-b border-primary-border/30">
         <h3 className="text-sm font-semibold text-primary-text">{title}</h3>
       </div>
@@ -106,25 +113,35 @@ const MainDataTable = ({
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-b-2xl">
-        <table className="min-w-full border-collapse">
+      <div className={`w-full max-w-full rounded-b-2xl ${disableHorizontalScroll ? "overflow-x-hidden" : "overflow-x-auto"}`}>
+        <table className={`min-w-full border-collapse ${tableClassName}`}>
           <thead className="bg-primary-border/10">
             <tr>
               {columns.map((column) => (
                 <th
                   key={column.key}
-                  className={`px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wide ${column.align === "right" ? "text-right" : "text-left"}`}
+                  className={`px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wide ${column.align === "right" ? "text-right" : "text-left"} ${headerCellClassName}`}
                 >
-                  <button
-                    type="button"
-                    className={`inline-flex items-center gap-1 cursor-pointer ${column.align === "right" ? "ml-auto" : ""}`}
-                    onClick={() => toggleSort(column.key)}
-                  >
-                    {column.label}
-                    <span className="text-[10px] opacity-70">
-                      {sortConfig.key === column.key ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}
-                    </span>
-                  </button>
+                  {column.sortable === false ? (
+                    <div className={`inline-flex items-center gap-1 ${column.align === "right" ? "ml-auto" : ""}`}>
+                      {headerRenderers?.[column.key]
+                        ? headerRenderers[column.key](column)
+                        : column.label}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className={`inline-flex items-center gap-1 cursor-pointer ${column.align === "right" ? "ml-auto" : ""}`}
+                      onClick={() => toggleSort(column.key)}
+                    >
+                      {headerRenderers?.[column.key]
+                        ? headerRenderers[column.key](column)
+                        : column.label}
+                      <span className="text-[10px] opacity-70">
+                        {sortConfig.key === column.key ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}
+                      </span>
+                    </button>
+                  )}
                 </th>
               ))}
             </tr>
@@ -154,9 +171,11 @@ const MainDataTable = ({
                 {columns.map((column) => (
                   <td
                     key={`${column.key}-${index}`}
-                    className={`px-4 py-3 text-sm text-primary-text ${column.key === "visualTag" ? "font-medium" : ""} ${column.align === "right" ? "text-right" : "text-left"}`}
+                    className={`px-4 py-3 text-sm text-primary-text ${column.key === "visualTag" ? "font-medium" : ""} ${column.align === "right" ? "text-right" : "text-left"} ${bodyCellClassName}`}
                   >
-                    {column.key === "visualTag" && onTagClick ? (
+                    {cellRenderers?.[column.key] ? (
+                      cellRenderers[column.key](row, column)
+                    ) : column.key === "visualTag" && onTagClick ? (
                       <button
                         type="button"
                         onClick={(event) => {

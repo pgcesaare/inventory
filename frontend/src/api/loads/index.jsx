@@ -47,3 +47,34 @@ export const createLoad = async (payload, token) => {
       throw error
     }
 }
+
+export const updateLoad = async (id, payload, token) => {
+    try {
+      const response = await api.patch(`/loads/${id}`, payload,
+        {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+        })
+      return response.data
+
+    } catch (error) {
+      console.error('Error updating load:', error)
+      throw error
+    }
+}
+
+export const deleteLoad = async (id, token) => {
+    try {
+      const response = await api.delete(`/loads/${id}`,
+        {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+      return response.data
+
+    } catch (error) {
+      console.error('Error deleting load:', error)
+      throw error
+    }
+}

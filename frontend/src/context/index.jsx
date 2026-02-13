@@ -19,6 +19,8 @@ export const AppProvider = ({ children }) => {
   const [ showCreateNewRanchPopup, setShowCreateNewRanchPopup ] = useState(false)
   const [ theme, setTheme ] = useState("light")
   const [hasManualTheme, setHasManualTheme] = useState(false)
+  const [notification, setNotification] = useState(null)
+  const [confirmDialog, setConfirmDialog] = useState(null)
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)")
@@ -73,6 +75,51 @@ export const AppProvider = ({ children }) => {
     setHasManualTheme(true)
   }
 
+  const showNotification = ({
+    title = "",
+    message = "",
+    type = "success",
+    duration = 3200,
+  }) => {
+    setNotification({
+      id: Date.now(),
+      title,
+      message,
+      type,
+      duration,
+    })
+  }
+
+  const showSuccess = (message, title = "Success") => {
+    showNotification({ title, message, type: "success" })
+  }
+
+  const showError = (message, title = "Error") => {
+    showNotification({ title, message, type: "error", duration: 4200 })
+  }
+
+  const confirmAction = ({
+    title = "Confirm Action",
+    message = "Do you want to proceed?",
+    confirmText = "YES",
+    cancelText = "NO",
+  }) => new Promise((resolve) => {
+    setConfirmDialog({
+      title,
+      message,
+      confirmText,
+      cancelText,
+      resolve,
+    })
+  })
+
+  const resolveConfirm = (value) => {
+    if (confirmDialog?.resolve) {
+      confirmDialog.resolve(value)
+    }
+    setConfirmDialog(null)
+  }
+
   const value = {
     ranch,
     setRanch,
@@ -86,7 +133,15 @@ export const AppProvider = ({ children }) => {
     setShowCreateNewRanchPopup,
     theme,
     setTheme,
-    toggleTheme
+    toggleTheme,
+    notification,
+    setNotification,
+    showNotification,
+    showSuccess,
+    showError,
+    confirmDialog,
+    confirmAction,
+    resolveConfirm,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
