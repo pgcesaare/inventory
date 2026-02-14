@@ -19,7 +19,7 @@ import { useAppContext } from "../../context"
 import { useNavigate } from "react-router-dom"
 import { useToken } from "../../api/useToken"
 import { deleteRanch, getRanches, updateRanch } from "../../api/ranches"
-import EditRanchModal from "../../components/dashboard/editRanchModal"
+import EditRanchModal from "../../components/ranches/editRanchModal"
 
 export function RanchSwitcher({ currentRanch, ranches }) {
   const { setShowCreateNewRanchPopup, setRanch, setRanches, confirmAction, showSuccess, showError } = useAppContext()

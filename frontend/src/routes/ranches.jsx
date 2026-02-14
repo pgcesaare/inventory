@@ -5,13 +5,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAppContext } from '../context'
 import { formatDateMMDDYYYY } from '../utils/dateFormat'
 
-import RanchCard from '../components/dashboard/ranchCard'
-import EditRanchModal from '../components/dashboard/editRanchModal'
+import RanchCard from '../components/ranches/ranchCard'
+import EditRanchModal from '../components/ranches/editRanchModal'
 import CreateButton from '../components/create'
 
 import { Search, ArrowUpDown, TrendingUp, Building2, Truck, CalendarClock, X, ChevronUp, ChevronDown } from 'lucide-react'
 
-const Dashboard = () => {
+const Ranches = () => {
 
   const [search, setSearch] = useState("")
   const [sortBy, setSortBy] = useState("name")
@@ -197,9 +197,9 @@ const Dashboard = () => {
   }
 
   return (
-    <div className='w-full min-h-screen bg-background flex justify-center px-6 py-8 lg:py-10'>
+    <div className='w-auto min-h-screen bg-background flex mx-1 lg:mx-2 py-8 lg:py-10'>
 
-      <div className='w-full max-w-[1320px] flex flex-col gap-7 lg:gap-8'>
+      <div className='w-full flex flex-col gap-7 lg:gap-8'>
 
         {/* Header */}
         <div className='
@@ -428,4 +428,4 @@ const Dashboard = () => {
   )
 }
 
-export default Dashboard
+export default Ranches

@@ -2,23 +2,23 @@ import React, { useEffect } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { useRoutes, BrowserRouter, Navigate, useLocation } from "react-router-dom";
 import Template from "./template/template";
-import Dashboard from "./routes/dashboard";
+import Ranches from "./routes/ranches";
 import Historical from "./routes/historical";
 import Inventory from "./routes/inventory";
 import AddCalves from "./routes/addCalves";
 import NavbarLayout from "./navbar/components/navbarLayout";
 import { useAppContext } from "./context";
-import CreateNewRanch from "./components/dashboard/createRanch";
+import CreateNewRanch from "./components/ranches/createRanch";
 import Loads from "./routes/load";
 import Settings from "./routes/settings";
 import GeneralSettings from "./routes/generalSettings";
 import FeedbackCenter from "./components/shared/feedbackCenter";
 import { AppBootSkeleton } from "./components/shared/loadingSkeletons";
 
-const ProtectedTemplate = ({ children, isAuthenticated, title }) => {
+const ProtectedTemplate = ({ children, isAuthenticated, title, showTopBar = true }) => {
   if (!isAuthenticated) return <Navigate to="/" />;
   return (
-    <Template title={title} navbar={<NavbarLayout />} content={children}/>
+    <Template title={title} showTopBar={showTopBar} navbar={<NavbarLayout />} content={children}/>
   );
 };
 
@@ -41,8 +41,9 @@ const AppRoutes = ({ isAuthenticated }) => {
       element: (
         ranchRouteGuard || <ProtectedTemplate
           title="Ranches"
+          showTopBar={false}
           isAuthenticated={isAuthenticated}>
-          <Dashboard />
+          <Ranches />
         </ProtectedTemplate>
       ),
     },
