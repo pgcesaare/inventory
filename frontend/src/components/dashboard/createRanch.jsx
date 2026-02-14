@@ -7,6 +7,7 @@ import { useAppContext } from "../../context"
 import { useToken } from "../../api/useToken"
 import { createRanch } from "../../api/ranches"
 import { useNavigate } from "react-router-dom"
+import { useAuth0 } from "@auth0/auth0-react"
 
 const randomColor = () => {
   return `#${Math.floor(Math.random() * 0xffffff)
@@ -17,6 +18,12 @@ const randomColor = () => {
 const CreateNewRanch = () => {
   const token = useToken()
   const navigate = useNavigate()
+  const { user } = useAuth0()
+  const createdByName =
+    user?.name ||
+    [user?.given_name, user?.family_name].filter(Boolean).join(" ").trim() ||
+    user?.nickname ||
+    null
   const { setShowCreateNewRanchPopup, setRanches, showSuccess, showError } = useAppContext()
 
   const [formData, setFormData] = useState({
@@ -73,6 +80,7 @@ const CreateNewRanch = () => {
       let newRanch = {
         ...formData,
         color: randomColor(),
+        createdBy: createdByName,
         weightCategories: [],
       }
 
@@ -81,7 +89,7 @@ const CreateNewRanch = () => {
       setRanches(prev => [...prev, newRanch])
       setShowCreateNewRanchPopup(false)
       showSuccess(`Ranch "${newRanch.name}" created successfully.`, "Created")
-      navigate(`/dashboard?newRanchId=${newRanch.id}`)
+      navigate(`/ranches?newRanchId=${newRanch.id}`)
 
     } catch (error) {
       console.error("Error creating ranch:", error)

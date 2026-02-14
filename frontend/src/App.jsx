@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { useRoutes, BrowserRouter, Navigate } from "react-router-dom";
+import { useRoutes, BrowserRouter, Navigate, useLocation } from "react-router-dom";
 import Template from "./template/template";
 import Dashboard from "./routes/dashboard";
 import Historical from "./routes/historical";
@@ -11,9 +11,7 @@ import { useAppContext } from "./context";
 import CreateNewRanch from "./components/dashboard/createRanch";
 import Loads from "./routes/load";
 import Settings from "./routes/settings";
-import ThemeToggle from "./components/themeToggle";
-import { useToken } from "./api/useToken";
-import { getRanches } from "./api/ranches";
+import GeneralSettings from "./routes/generalSettings";
 import FeedbackCenter from "./components/shared/feedbackCenter";
 import { AppBootSkeleton } from "./components/shared/loadingSkeletons";
 
@@ -24,28 +22,36 @@ const ProtectedTemplate = ({ children, isAuthenticated, title }) => {
   );
 };
 
-const AppRoutes = ({ isAuthenticated, ranchesReady, hasRanches }) => {
-  const dashboardElement = !isAuthenticated
-    ? <Navigate to="/" />
-    : !ranchesReady
-      ? <AppBootSkeleton />
-      : <Dashboard />
+const LegacyRanchRouteRedirect = () => {
+  const location = useLocation();
+  const migratedPath = location.pathname
+    .replace("/dashboard/ranch/", "/ranches/")
+    .replace("/ranches/ranch/", "/ranches/");
+  return <Navigate to={`${migratedPath}${location.search}`} replace />;
+};
 
+const AppRoutes = ({ isAuthenticated }) => {
   const ranchRouteGuard = !isAuthenticated
     ? <Navigate to="/" />
-    : !ranchesReady
-      ? <AppBootSkeleton />
-    : !hasRanches
-      ? <Navigate to="/dashboard" />
-      : null
+    : null
 
   let routes = useRoutes([
     {
-      path: "/dashboard",
-      element: dashboardElement,
+      path: "/ranches",
+      element: (
+        ranchRouteGuard || <ProtectedTemplate
+          title="Ranches"
+          isAuthenticated={isAuthenticated}>
+          <Dashboard />
+        </ProtectedTemplate>
+      ),
     },
     {
-      path: "/dashboard/ranch/:id/historical",
+      path: "/dashboard",
+      element: <Navigate to="/ranches" replace />,
+    },
+    {
+      path: "/ranches/:id/historical",
       element: (
         ranchRouteGuard || <ProtectedTemplate
           title="Historical placements"
@@ -55,7 +61,7 @@ const AppRoutes = ({ isAuthenticated, ranchesReady, hasRanches }) => {
       ),
     },
     {
-      path: "/dashboard/ranch/:id/inventory",
+      path: "/ranches/:id/inventory",
       element: (
         ranchRouteGuard || <ProtectedTemplate 
           title="Inventory"
@@ -65,7 +71,7 @@ const AppRoutes = ({ isAuthenticated, ranchesReady, hasRanches }) => {
       ),
     },
     {
-      path: "/dashboard/ranch/:id/manage-calves",
+      path: "/ranches/:id/manage-calves",
       element: (
         ranchRouteGuard || <ProtectedTemplate
           title="Manage calves"
@@ -75,7 +81,7 @@ const AppRoutes = ({ isAuthenticated, ranchesReady, hasRanches }) => {
       ),
     },
     {
-      path: "/dashboard/ranch/:id/loads",
+      path: "/ranches/:id/loads",
       element: (
         ranchRouteGuard || <ProtectedTemplate
           title="Load history"
@@ -85,17 +91,27 @@ const AppRoutes = ({ isAuthenticated, ranchesReady, hasRanches }) => {
       ),
     },
     {
-      path: "/dashboard/ranch/:id/settings",
+      path: "/settings",
       element: (
         ranchRouteGuard || <ProtectedTemplate
-          title="Settings"
+          title="General settings"
+          isAuthenticated={isAuthenticated}>
+          <GeneralSettings />
+        </ProtectedTemplate>
+      ),
+    },
+    {
+      path: "/ranches/:id/settings",
+      element: (
+        ranchRouteGuard || <ProtectedTemplate
+          title="Ranch settings"
           isAuthenticated={isAuthenticated}>
           <Settings />
         </ProtectedTemplate>
       ),
     },
     {
-      path: "/dashboard/ranch/:id/add-calves",
+      path: "/ranches/:id/add-calves",
       element: (
         ranchRouteGuard || <ProtectedTemplate
           title="Add calves"
@@ -105,8 +121,16 @@ const AppRoutes = ({ isAuthenticated, ranchesReady, hasRanches }) => {
       ),
     },
     {
+      path: "/dashboard/ranch/:id/*",
+      element: <LegacyRanchRouteRedirect />,
+    },
+    {
+      path: "/ranches/ranch/:id/*",
+      element: <LegacyRanchRouteRedirect />,
+    },
+    {
       path: "/",
-      element: isAuthenticated ? <Navigate to="/dashboard" /> : null,
+      element: isAuthenticated ? <Navigate to="/ranches" /> : null,
     },
   ]);
 
@@ -114,59 +138,24 @@ const AppRoutes = ({ isAuthenticated, ranchesReady, hasRanches }) => {
 };
 
 function App() {
-  const { showCreateNewRanchPopup, ranches, ranch } = useAppContext()
+  const { showCreateNewRanchPopup } = useAppContext()
   const { loginWithRedirect, isAuthenticated, isLoading } = useAuth0();
-  const token = useToken()
-  const [ranchesReady, setRanchesReady] = React.useState(false)
-  const [hasRanches, setHasRanches] = React.useState(false)
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) loginWithRedirect();
   }, [isAuthenticated, isLoading, loginWithRedirect]);
 
-  useEffect(() => {
-    const fetchRanches = async () => {
-      if (!isAuthenticated || !token) {
-        setRanchesReady(false)
-        return
-      }
-
-      try {
-        const ranches = await getRanches(token)
-        const list = Array.isArray(ranches) ? ranches : []
-        setHasRanches(list.length > 0)
-      } catch (error) {
-        console.error("Error fetching ranches for route guard:", error)
-        setHasRanches(false)
-      } finally {
-        setRanchesReady(true)
-      }
-    }
-
-    fetchRanches()
-  }, [isAuthenticated, token])
-
-  const hasRanchesInContext =
-    (Array.isArray(ranches) && ranches.length > 0) || Boolean(ranch?.id)
-  const effectiveHasRanches = hasRanches || hasRanchesInContext
-
   if (isLoading) return <AppBootSkeleton />;
-  if (isAuthenticated && !ranchesReady) return <AppBootSkeleton />;
 
   return (
     <BrowserRouter>
       <AppRoutes
         isAuthenticated={isAuthenticated}
-        ranchesReady={ranchesReady}
-        hasRanches={effectiveHasRanches}
       />
       {showCreateNewRanchPopup && 
         <CreateNewRanch />
       }
       <FeedbackCenter />
-      <div className="fixed top-5 right-5 z-[100]">
-        <ThemeToggle />
-      </div>
     </BrowserRouter>
   );
 }

@@ -2,6 +2,7 @@ const express = require('express')
 const { createRanchesSchema, getRanchesSchema, updateRanchesSchema } = require('../schemas/ranches.schema')
 const validatorHandler = require('../middlewares/validator.handler')
 const RanchesService = require('../services/ranches.service')
+const { getCreatedByFromRequest } = require('../utils/authUser')
 
 const router = express.Router()
 
@@ -37,7 +38,12 @@ router.post('/',
   async (req, res, next) => {
     try {
       const body = req.body
-      const newitem = await service.create(body)
+      const fallbackCreatedBy = String(body?.createdBy || '').trim() || null
+      const createdBy = getCreatedByFromRequest(req) || fallbackCreatedBy
+      const newitem = await service.create({
+        ...body,
+        createdBy,
+      })
       res.status(201).json(newitem)
     } catch (error) {
       next(error)

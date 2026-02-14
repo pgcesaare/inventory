@@ -35,7 +35,7 @@ const Navbar = () => {
                     <ul className='flex flex-col gap-5'>
                         <li>
                             <NavLink
-                            to={`/dashboard/ranch/${ranch.id}/inventory`}
+                            to={`/ranches/${ranch.id}/inventory`}
                                 className={({ isActive }) =>
                                 (isActive ? 'active-link' : undefined)
                                 }>
@@ -43,7 +43,7 @@ const Navbar = () => {
                             </NavLink>
                         </li>
                         <li>
-                            <NavLink to={`/dashboard/ranch/${ranch.id}/historical`}
+                            <NavLink to={`/ranches/${ranch.id}/historical`}
                                 className={({ isActive }) => 
                                 (isActive ? 'active-link' : undefined)
                                 }>

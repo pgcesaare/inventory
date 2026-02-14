@@ -99,6 +99,7 @@ const Load = () => {
             <LoadList
               setSelectedLoad={setSelectedLoad}
               selectedLoadId={selectedLoad}
+              isDetailsOpen={isSlideOpen}
               onOpen={handleCreateLoad}
               setIsLoads={setIsLoads}
               refreshKey={refreshKey}

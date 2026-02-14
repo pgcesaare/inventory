@@ -4,6 +4,7 @@ const { createCalvesSchema, getCalvesSchema, updateCalvesSchema } = require('../
 const CalvesService = require('../services/calves.service')
 const moment = require('moment')
 const XLSX = require('xlsx')
+const { getCreatedByFromRequest } = require('../utils/authUser')
 
 const router = express.Router()
 
@@ -155,10 +156,13 @@ router.post('/',
   async (req, res, next) => {
     try {
       const body = normalizeIncomingCalfPayload(req.body, { forceCreationFields: true })
+      const fallbackCreatedBy = String(body?.createdBy || '').trim() || null
+      const createdBy = getCreatedByFromRequest(req) || fallbackCreatedBy
 
       body.placedDate = normalizeDateField(body.placedDate)
       body.deathDate = normalizeDateField(body.deathDate)
       body.shippedOutDate = normalizeDateField(body.shippedOutDate)
+      body.createdBy = createdBy
 
       const newCalf = await service.create(body)
       res.status(201).json(newCalf)

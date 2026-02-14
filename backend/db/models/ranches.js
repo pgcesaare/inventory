@@ -47,6 +47,12 @@ const RanchesSchema = {
     type: DataTypes.STRING,
     unique: false,
   },
+  createdBy: {
+    allowNull: true,
+    type: DataTypes.STRING,
+    unique: false,
+    field: 'created_by',
+  },
 }
 class Ranches extends Model {
 

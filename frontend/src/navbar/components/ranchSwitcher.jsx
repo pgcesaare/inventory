@@ -36,7 +36,7 @@ export function RanchSwitcher({ currentRanch, ranches }) {
     if (setRanch) setRanch(ranch)
 
     // navigate using the clicked ranch directly (no stale state)
-    navigate(`/dashboard/ranch/${ranch.id}/inventory`)
+    navigate(`/ranches/${ranch.id}/inventory`)
   }
 
   const handleEditCurrentRanch = () => {
@@ -85,7 +85,7 @@ export function RanchSwitcher({ currentRanch, ranches }) {
       if (!refreshed || refreshed.length === 0) {
         if (setRanch) setRanch(null)
         if (setRanches) setRanches([])
-        navigate("/dashboard")
+        navigate("/ranches")
         return
       }
 
@@ -94,7 +94,7 @@ export function RanchSwitcher({ currentRanch, ranches }) {
 
       if (setRanch) setRanch(nextRanch)
       if (setRanches) setRanches(rest)
-      navigate(`/dashboard/ranch/${nextRanch.id}/inventory`)
+      navigate(`/ranches/${nextRanch.id}/inventory`)
       showSuccess(`Ranch "${currentRanch.name}" deleted successfully.`, "Deleted")
     } catch (error) {
       console.error("Error deleting ranch:", error)

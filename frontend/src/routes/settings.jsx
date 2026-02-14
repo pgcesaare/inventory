@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
 import { useParams } from "react-router-dom"
-import { useAuth0 } from "@auth0/auth0-react"
-import { LogOut } from "lucide-react"
 import { useToken } from "../api/useToken"
 import { getRanchById, updateRanch } from "../api/ranches"
 import { useAppContext } from "../context"
@@ -11,7 +9,6 @@ import { RanchPageSkeleton } from "../components/shared/loadingSkeletons"
 const Settings = () => {
   const { id } = useParams()
   const token = useToken()
-  const { logout } = useAuth0()
   const { ranch, setRanch, setRanches, showSuccess, showError } = useAppContext()
   const [saving, setSaving] = useState(false)
   const [categories, setCategories] = useState(DEFAULT_WEIGHT_CATEGORIES)
@@ -88,9 +85,6 @@ const Settings = () => {
     },
   ]
   const breadcrumbCurrent = selectedSetting === "weight-categories" ? "Weight Categories" : ""
-  const handleLogout = () => {
-    logout({ logoutParams: { returnTo: window.location.origin } })
-  }
 
   return (
     <div className="w-full p-4 md:p-6 space-y-5">
@@ -135,19 +129,6 @@ const Settings = () => {
                 </div>
               </button>
             ))}
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="w-full rounded-xl border border-red-200 px-4 py-3 text-left transition-colors hover:bg-red-50"
-            >
-              <div className="inline-flex items-center gap-2">
-                <LogOut className="h-4 w-4 text-red-600" />
-                <div>
-                  <p className="text-sm font-semibold text-red-700">Log out</p>
-                  <p className="mt-0.5 text-xs text-secondary">Close your session and return to login.</p>
-                </div>
-              </div>
-            </button>
           </div>
         </div>
       )}

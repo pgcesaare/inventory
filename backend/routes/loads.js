@@ -2,6 +2,7 @@ const express = require('express')
 const { createLoadsSchema, getLoadsSchema, updateLoadsSchema } = require('../schemas/loads.schema')
 const validatorHandler = require('../middlewares/validator.handler')
 const LoadsService = require('../services/loads.service')
+const { getCreatedByFromRequest } = require('../utils/authUser')
 
 const router = express.Router()
 
@@ -52,7 +53,12 @@ router.post('/',
   validatorHandler(createLoadsSchema, 'body'),
   async (req, res, next) => {
     try {
-      const load = await service.createLoad(req.body)
+      const fallbackCreatedBy = String(req.body?.createdBy || '').trim() || null
+      const createdBy = getCreatedByFromRequest(req) || fallbackCreatedBy
+      const load = await service.createLoad({
+        ...req.body,
+        createdBy,
+      })
       res.status(201).json(load)
     } catch (error) {
       next(error)

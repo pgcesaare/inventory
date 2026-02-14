@@ -56,6 +56,7 @@ class RanchesService {
 
         return ranches.map((item) => ({
             ...item,
+            createdBy: item.createdBy || item.created_by || null,
             weightCategories: mapWeightCategoriesForApi(byRanch.get(Number(item.id)) || []),
         }))
     }

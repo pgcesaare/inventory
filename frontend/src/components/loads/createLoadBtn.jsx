@@ -1,8 +1,8 @@
 import Create from "../create"
 
-const CreateLoadBtn = ({onOpen}) => {
+const CreateLoadBtn = ({ onOpen, text = "Create new load" }) => {
     return(
-        <Create text="Create new load" onClick={onOpen} />
+        <Create text={text} onClick={onOpen} />
     )
 }
 

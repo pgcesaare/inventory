@@ -4,7 +4,7 @@ const GoBack = () => {
     const navigate = useNavigate();
     return (
         <button 
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate('/ranches')}
             className="text-sm font-bold"
         >&lt; Select Ranch</button>)
     }

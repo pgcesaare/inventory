@@ -174,8 +174,24 @@ class CalvesService {
                 daysOnFeed: calf.daysOnFeed,
                 originRanchID: calf.originRanchID,
                 currentRanchID: calf.currentRanchID,
-                createdAt: calf.createdAt || null,
-                updatedAt: calf.updatedAt || null
+                createdBy:
+                    calf.createdBy ||
+                    calf.created_by ||
+                    (typeof calf.get === 'function' ? calf.get('created_by') : null) ||
+                    (calf.dataValues ? calf.dataValues.created_by : null) ||
+                    null,
+                createdAt:
+                    calf.createdAt ||
+                    calf.created_at ||
+                    (typeof calf.get === 'function' ? calf.get('created_at') : null) ||
+                    (calf.dataValues ? calf.dataValues.created_at : null) ||
+                    null,
+                updatedAt:
+                    calf.updatedAt ||
+                    calf.updated_at ||
+                    (typeof calf.get === 'function' ? calf.get('updated_at') : null) ||
+                    (calf.dataValues ? calf.dataValues.updated_at : null) ||
+                    null
             },
             events
         }

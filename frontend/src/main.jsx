@@ -24,9 +24,9 @@ createRoot(document.getElementById('root')).render(
     domain={domain}
     clientId={clientId}
     authorizationParams={{
-      redirect_uri: "http://localhost:5173/dashboard",
+      redirect_uri: window.location.origin,
       audience: apiAudience,
-      scope: "read:current_user update:current_user_metadata"
+      scope: "openid profile email read:current_user update:current_user_metadata"
     }}
   >
     <AppProvider>

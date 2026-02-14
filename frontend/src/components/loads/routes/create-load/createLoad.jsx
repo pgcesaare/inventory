@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useParams } from "react-router-dom"
 import { Search, CheckCheck, X } from "lucide-react"
+import { useAuth0 } from "@auth0/auth0-react"
 import { useToken } from "../../../../api/useToken"
 import { getRanches } from "../../../../api/ranches"
 import { getInventoryByRanch } from "../../../../api/calves"
@@ -33,6 +34,12 @@ const toTitleCase = (value) => String(value || "").toLowerCase().replace(/\b\w/g
 const CreateLoad = ({ onCreated }) => {
   const { id } = useParams()
   const token = useToken()
+  const { user } = useAuth0()
+  const createdByName =
+    user?.name ||
+    [user?.given_name, user?.family_name].filter(Boolean).join(" ").trim() ||
+    user?.nickname ||
+    null
   const { showSuccess, showError } = useAppContext()
 
   const [destinations, setDestinations] = useState([])
@@ -240,6 +247,7 @@ const CreateLoad = ({ onCreated }) => {
 
   const selectedCount = selectedCalfIDs.length
   const quickPickerLimits = [100, 150, 200, 230]
+  const hasSelectedDestinationRanch = Boolean(form.destinationRanchID)
 
   const setField = (key, value) => {
     setFieldErrors((prev) => {
@@ -254,7 +262,16 @@ const CreateLoad = ({ onCreated }) => {
       }
       return next
     })
-    setForm((prev) => ({ ...prev, [key]: value }))
+    setForm((prev) => {
+      if (key === "destinationRanchID") {
+        return {
+          ...prev,
+          destinationRanchID: value,
+          destinationName: value ? "" : prev.destinationName,
+        }
+      }
+      return { ...prev, [key]: value }
+    })
   }
 
   const toggleSelectCalf = (calfID) => {
@@ -344,6 +361,7 @@ const CreateLoad = ({ onCreated }) => {
           originRanchID: originRanchId,
           destinationRanchID: destinationRanchIdValue,
           destinationName: customDestination || null,
+          createdBy: createdByName,
           departureDate: form.departureDate,
           arrivalDate: form.arrivalDate || null,
           trucking: form.trucking || null,
@@ -372,7 +390,7 @@ const CreateLoad = ({ onCreated }) => {
         <p className="mt-1 text-xs text-secondary">Fields marked with <span className="text-red-600">*</span> are required. For destination, provide ranch or custom value.</p>
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
           <div ref={destinationRef} className="scroll-mt-24">
-            <label className="text-xs font-semibold text-secondary">Destination Ranch (from DB)<RequiredMark /></label>
+            <label className="text-xs font-semibold text-secondary">Destination Ranch<RequiredMark /></label>
             <select
               className={fieldClass}
               value={form.destinationRanchID}
@@ -394,9 +412,10 @@ const CreateLoad = ({ onCreated }) => {
           <div>
             <label className="text-xs font-semibold text-secondary">Custom Destination<RequiredMark /></label>
             <input
-              className={fieldClass}
+              className={`${fieldClass} ${hasSelectedDestinationRanch ? "cursor-not-allowed opacity-60" : ""}`}
               value={form.destinationName}
               onChange={(e) => setField("destinationName", e.target.value)}
+              disabled={hasSelectedDestinationRanch}
               placeholder="Any extra destination not in ranches table"
             />
             {fieldErrors.destination && (
@@ -430,7 +449,7 @@ const CreateLoad = ({ onCreated }) => {
               className={fieldClass}
               value={form.trucking}
               onChange={(e) => setField("trucking", e.target.value)}
-              placeholder="Company / unit"
+              placeholder="Company"
             />
           </div>
           <div className="md:col-span-2">

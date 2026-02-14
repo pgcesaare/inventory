@@ -100,7 +100,7 @@ const LocationFilterMenu = ({ destination, city, state, destinationOptions, city
   )
 }
 
-const LoadMenu = ({ data, resultsCount, onOpen }) => {
+const LoadMenu = ({ data, isDetailsOpen = false, onOpen }) => {
   const { selected, setSelected } = useAppContext()
 
   const destinationOptions = useMemo(() => uniqueOptions(data.map((item) => item.destination)), [data])
@@ -118,13 +118,10 @@ const LoadMenu = ({ data, resultsCount, onOpen }) => {
 
   return (
     <div className="rounded-2xl border border-primary-border/30 bg-white p-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-secondary">{resultsCount} result(s)</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+      <div className="flex flex-col gap-3">
+        <div className={`flex w-full items-center gap-2 ${isDetailsOpen ? "flex-nowrap overflow-x-auto" : "flex-wrap"}`}>
           <LocationFilterMenu
-            className="w-full sm:w-[170px]"
+            className={isDetailsOpen ? "w-[120px] shrink-0" : "w-full sm:w-[170px]"}
             destination={selected.destination || ""}
             city={selected.city || ""}
             state={selected.state || ""}
@@ -136,7 +133,7 @@ const LoadMenu = ({ data, resultsCount, onOpen }) => {
             }
           />
           <DateFilterMenu
-            className="w-full sm:w-[170px]"
+            className={isDetailsOpen ? "w-[120px] shrink-0" : "w-full sm:w-[170px]"}
             dateFrom={selected.dateFrom || selected.date || ""}
             dateTo={selected.dateTo || selected.date || ""}
             onChange={({ from, to }) => {
@@ -163,13 +160,13 @@ const LoadMenu = ({ data, resultsCount, onOpen }) => {
                   dateTo: "",
                 }))
               }
-              className="h-full min-h-[40px] w-full sm:w-auto rounded-xl border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
+              className={`h-full min-h-[40px] rounded-xl border border-primary-border/40 px-2 py-1.5 text-xs hover:bg-primary-border/10 ${isDetailsOpen ? "w-[72px] shrink-0" : "w-full sm:w-auto"}`}
             >
               Reset
             </button>
           )}
-          <div className="w-full sm:w-auto sm:shrink-0">
-            <CreateLoadBtn onOpen={onOpen} />
+          <div className={`${isDetailsOpen ? "ml-auto w-auto shrink-0" : "w-full sm:ml-auto sm:w-auto sm:shrink-0"}`}>
+            <CreateLoadBtn onOpen={onOpen} text={isDetailsOpen ? "Create" : "Create new load"} />
           </div>
         </div>
       </div>

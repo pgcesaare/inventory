@@ -4,6 +4,37 @@ const { sequelize, model } = require('../db/libs/sequelize')
 class LoadsService {
   constructor() {}
 
+  getAuditTimestamps(entity) {
+    const data = entity?.toJSON ? entity.toJSON() : (entity || {})
+    const createdAt =
+      data.createdAt ||
+      data.created_at ||
+      entity?.createdAt ||
+      entity?.created_at ||
+      (typeof entity?.get === 'function' ? entity.get('created_at') : null) ||
+      null
+    const updatedAt =
+      data.updatedAt ||
+      data.updated_at ||
+      entity?.updatedAt ||
+      entity?.updated_at ||
+      (typeof entity?.get === 'function' ? entity.get('updated_at') : null) ||
+      null
+    return { createdAt, updatedAt }
+  }
+
+  getCreatedBy(entity) {
+    const data = entity?.toJSON ? entity.toJSON() : (entity || {})
+    return (
+      data.createdBy ||
+      data.created_by ||
+      entity?.createdBy ||
+      entity?.created_by ||
+      (typeof entity?.get === 'function' ? entity.get('created_by') : null) ||
+      null
+    )
+  }
+
   normalizeIdentifierList(values = []) {
     if (!Array.isArray(values)) return []
     return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))]
@@ -29,8 +60,13 @@ class LoadsService {
     if (!load) return null
 
     const data = load.toJSON()
+    const { createdAt, updatedAt } = this.getAuditTimestamps(load)
+    const createdBy = this.getCreatedBy(load)
     return {
       ...data,
+      createdAt,
+      updatedAt,
+      createdBy,
       headCount: data.load?.length || 0,
       shippedOutDate: data.departureDate || null,
       shippedTo: data.destination?.name || data.destinationName || null,
@@ -51,7 +87,8 @@ class LoadsService {
         shippedOutDate: item.calf?.shippedOutDate || null,
         shippedTo: item.calf?.shippedTo || null,
         originRanchID: item.calf?.originRanchID ?? null,
-        currentRanchID: item.calf?.currentRanchID ?? null
+        currentRanchID: item.calf?.currentRanchID ?? null,
+        createdBy: item.calf?.createdBy || item.calf?.created_by || null
       }))
     }
   }
@@ -388,8 +425,13 @@ class LoadsService {
 
     const result = loads.map(load => {
       const data = load.toJSON()
+      const { createdAt, updatedAt } = this.getAuditTimestamps(load)
+      const createdBy = this.getCreatedBy(load)
       return {
         ...data,
+        createdAt,
+        updatedAt,
+        createdBy,
         headCount: data.load?.length || 0,
         shippedOutDate: data.departureDate || null,
         shippedTo: data.destination?.name || data.destinationName || null
@@ -408,7 +450,8 @@ class LoadsService {
     departureDate,
     arrivalDate,
     notes,
-    trucking
+    trucking,
+    createdBy
   }) {
     const t = await sequelize.transaction()
 
@@ -435,7 +478,8 @@ class LoadsService {
         departureDate,
         arrivalDate,
         notes,
-        trucking
+        trucking,
+        createdBy: createdBy || null
       }, { transaction: t })
 
       // If no filters → do NOT modify calves
@@ -495,7 +539,7 @@ class LoadsService {
       }
 
       await t.commit()
-      return load
+      return await this.findOne(load.id)
 
     } catch (error) {
       await t.rollback()

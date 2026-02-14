@@ -7,7 +7,7 @@ import { useToken } from "../api/useToken"
 import { getRanchById } from "../api/ranches"
 import { getInventoryByRanch, getManageCalvesByRanch, getCalfMovementHistory, updateCalf, deleteCalf, createCalf } from "../api/calves"
 import { useAppContext } from "../context"
-import { formatDateMMDDYYYY } from "../utils/dateFormat"
+import { formatDateMMDDYYYY, formatDateTimeMMDDYYYY } from "../utils/dateFormat"
 import { isDateInDateRange } from "../utils/dateRange"
 import MainDataTable from "../components/shared/mainDataTable"
 import DateFilterMenu from "../components/shared/dateFilterMenu"
@@ -39,7 +39,7 @@ const Inventory = () => {
     useEffect(() => {
       if (!id) return
       if (location.pathname.endsWith("/inventory") && searchParams.get("mode") === "manage") {
-        navigate(`/dashboard/ranch/${id}/manage-calves`, { replace: true })
+        navigate(`/ranches/${id}/manage-calves`, { replace: true })
       }
     }, [id, location.pathname, navigate, searchParams])
     const [selectedIds, setSelectedIds] = useState([])
@@ -550,7 +550,7 @@ const Inventory = () => {
       setIsEditing(false)
     }
 
-    const selectedCalfInfo = selectedCalfDetails || movementHistory?.calf || null
+    const selectedCalfInfo = movementHistory?.calf || selectedCalfDetails || null
 
     const detailRows = selectedCalfInfo ? [
       { label: "Visual Tag", value: selectedCalfInfo.primaryID || selectedCalf?.visualTag || "-" },
@@ -594,8 +594,9 @@ const Inventory = () => {
       { label: "Death Date", value: formatDate(selectedCalfInfo.deathDate) },
       { label: "Pre Days On Feed", value: selectedCalfInfo.preDaysOnFeed ?? "-" },
       { label: "Days On Feed", value: calculateDaysOnFeed(selectedCalfInfo) },
-      { label: "Created At", value: formatDate(selectedCalfInfo.createdAt) },
-      { label: "Updated At", value: formatDate(selectedCalfInfo.updatedAt) },
+      { label: "Created By", value: selectedCalfInfo.createdBy || selectedCalfInfo.created_by || "N/A" },
+      { label: "Created At", value: formatDateTimeMMDDYYYY(selectedCalfInfo.createdAt || selectedCalfInfo.created_at, "N/A") },
+      { label: "Updated At", value: formatDateTimeMMDDYYYY(selectedCalfInfo.updatedAt || selectedCalfInfo.updated_at, "N/A") },
     ] : []
 
     const toNumberOrNull = (value) => {

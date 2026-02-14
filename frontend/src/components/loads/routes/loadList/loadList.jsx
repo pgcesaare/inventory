@@ -13,7 +13,7 @@ import { toDateKey } from "../../../../utils/dateRange"
 
 dayjs.extend(utc)
 
-const LoadList = ({ setSelectedLoad, selectedLoadId, onOpen, setIsLoads, refreshKey = 0 }) => {
+const LoadList = ({ setSelectedLoad, selectedLoadId, isDetailsOpen = false, onOpen, setIsLoads, refreshKey = 0 }) => {
     const [loads, setLoads] = useState([])
     const { id } = useParams()
     const token = useToken()
@@ -122,7 +122,7 @@ const LoadList = ({ setSelectedLoad, selectedLoadId, onOpen, setIsLoads, refresh
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
           <LoadMenu
             data={data}
-            resultsCount={filteredLoads.length}
+            isDetailsOpen={isDetailsOpen}
             onOpen={onOpen}
           />
 

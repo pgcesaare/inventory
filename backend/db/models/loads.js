@@ -64,6 +64,11 @@ const LoadsSchema = {
     allowNull: true,
     type: DataTypes.STRING,
   },
+  createdBy: {
+    allowNull: true,
+    type: DataTypes.STRING,
+    field: 'created_by'
+  },
 
 
 

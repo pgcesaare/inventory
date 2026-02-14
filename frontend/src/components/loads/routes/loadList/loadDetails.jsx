@@ -9,12 +9,12 @@ import { useAppContext } from "../../../../context"
 import { getRanches } from "../../../../api/ranches"
 import { deleteLoad, updateLoad } from "../../../../api/loads"
 import StyledDateInput from "../../../shared/styledDateInput"
+import { formatDateMMDDYYYY, formatDateTimeMMDDYYYY } from "../../../../utils/dateFormat"
 
 dayjs.extend(utc)
 
 const formatDate = (value) => {
-  if (!value) return "N/A"
-  return dayjs.utc(value).format("MM/DD/YYYY")
+  return formatDateMMDDYYYY(value, "N/A")
 }
 
 const normalizeSearchValue = (value) => String(value ?? "").toLowerCase().trim().replace(/[\s-]+/g, "")
@@ -745,12 +745,16 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
             Departure: {formatDate(load.departureDate)}
           </div>
           <div className="inline-flex items-center gap-1.5">
-            <Calendar className="size-3.5" />
-            Created: {formatDate(load.createdAt)}
+            <ClipboardList className="size-3.5" />
+            Created By: {load.createdBy || load.created_by || "N/A"}
           </div>
           <div className="inline-flex items-center gap-1.5">
             <Calendar className="size-3.5" />
-            Updated: {formatDate(load.updatedAt)}
+            Created: {formatDateTimeMMDDYYYY(load.createdAt || load.created_at, "N/A")}
+          </div>
+          <div className="inline-flex items-center gap-1.5">
+            <Calendar className="size-3.5" />
+            Updated: {formatDateTimeMMDDYYYY(load.updatedAt || load.updated_at, "N/A")}
           </div>
           <div className="inline-flex items-center gap-1.5 sm:col-span-2">
             <PackageCheck className="size-3.5" />

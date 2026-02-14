@@ -22,6 +22,7 @@ const shippedOutDate = Joi.date()
 const shippedTo = Joi.string()
 const preDaysOnFeed = Joi.number().integer()
 const daysOnFeed = Joi.number().integer()
+const createdBy = Joi.string()
 
 const createCalvesSchema = Joi.object({
 
@@ -44,6 +45,7 @@ const createCalvesSchema = Joi.object({
     shippedTo: shippedTo.allow(null, ''),
     preDaysOnFeed: preDaysOnFeed.allow(null),
     daysOnFeed: daysOnFeed.allow(null),
+    createdBy: createdBy.allow(null, ''),
     currentRanchID: currentRanchID.required(),
     originRanchID: originRanchID.allow(null),
 

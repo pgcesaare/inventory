@@ -4,18 +4,18 @@ import { useToken } from '../api/useToken'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAppContext } from '../context'
 import { formatDateMMDDYYYY } from '../utils/dateFormat'
-import { useAuth0 } from "@auth0/auth0-react"
 
 import RanchCard from '../components/dashboard/ranchCard'
 import EditRanchModal from '../components/dashboard/editRanchModal'
 import CreateButton from '../components/create'
 
-import { Search, ArrowUpDown, TrendingUp, Building2, Beef, Truck, CalendarClock, LogOut, X } from 'lucide-react'
+import { Search, ArrowUpDown, TrendingUp, Building2, Truck, CalendarClock, X, ChevronUp, ChevronDown } from 'lucide-react'
 
 const Dashboard = () => {
 
   const [search, setSearch] = useState("")
   const [sortBy, setSortBy] = useState("name")
+  const [sortDirection, setSortDirection] = useState("asc")
   const [editingRanch, setEditingRanch] = useState(null)
   const [isSavingRanch, setIsSavingRanch] = useState(false)
   const [highlightRanchId, setHighlightRanchId] = useState(null)
@@ -23,7 +23,6 @@ const Dashboard = () => {
   const token = useToken()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { logout } = useAuth0()
   const { ranches, setRanches, ranch, setRanch, setShowCreateNewRanchPopup, confirmAction, showSuccess, showError } = useAppContext()
 
   useEffect(() => {
@@ -49,7 +48,7 @@ const Dashboard = () => {
     try {
       const ranchData = await getRanchById(data.id, token)
       setRanch(ranchData)
-      navigate(`/dashboard/ranch/${ranchData.id}/historical`)
+      navigate(`/ranches/${ranchData.id}/historical`)
     } catch (error) {
       console.error('Error fetching ranch details:', error)
     }
@@ -128,7 +127,6 @@ const Dashboard = () => {
       const ranchCity = normalizeText(ranch.city)
       const ranchState = normalizeText(ranch.state)
       const ranchZipCode = normalizeText(ranch.zipCode)
-
       return (
         ranchName.includes(searchTerm) ||
         ranchCity.includes(searchTerm) ||
@@ -137,8 +135,14 @@ const Dashboard = () => {
       )
     })
     .sort((a, b) => {
-      if (sortBy === "name") return (a.name || "").localeCompare(b.name || "")
-      if (sortBy === "cattle") return b.totalCattle - a.totalCattle
+      if (sortBy === "name") {
+        const comparison = (a.name || "").localeCompare(b.name || "")
+        return sortDirection === "asc" ? comparison : -comparison
+      }
+      if (sortBy === "cattle") {
+        const comparison = (a.totalCattle || 0) - (b.totalCattle || 0)
+        return sortDirection === "asc" ? comparison : -comparison
+      }
       return 0
     })
 
@@ -175,6 +179,23 @@ const Dashboard = () => {
     return () => window.clearTimeout(timeoutId)
   }, [searchParams, setSearchParams, filteredRanches.length])
 
+  const handleSortChange = (nextSortBy) => {
+    if (sortBy === nextSortBy) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
+      return
+    }
+
+    setSortBy(nextSortBy)
+    setSortDirection(nextSortBy === "cattle" ? "desc" : "asc")
+  }
+
+  const sortIndicator = (field) => {
+    if (sortBy !== field) return <ArrowUpDown className="h-3.5 w-3.5 opacity-55" />
+    return sortDirection === "asc"
+      ? <ChevronUp className="h-3.5 w-3.5 text-action-blue" />
+      : <ChevronDown className="h-3.5 w-3.5 text-action-blue" />
+  }
+
   return (
     <div className='w-full min-h-screen bg-background flex justify-center px-6 py-8 lg:py-10'>
 
@@ -194,7 +215,7 @@ const Dashboard = () => {
             <div className='h-10 w-10 rounded-xl bg-action-blue/15 dark:bg-action-blue/20 text-action-blue flex items-center justify-center'>
               <TrendingUp className="h-5 w-5" />
             </div>
-            <h1 className='text-primary text-title-h2'>Ranch Dashboard</h1>
+            <h1 className='text-primary text-title-h2'>Ranches</h1>
           </div>
           <p className='text-secondary text-sm'>
             Overview of ranches, cattle inventory, and active load activity.
@@ -213,7 +234,7 @@ const Dashboard = () => {
           <div className='rounded-2xl border border-primary-border/30 bg-white p-4 shadow-sm'>
             <div className='flex items-center justify-between'>
               <span className='text-xs text-secondary uppercase tracking-wide'>Cattle</span>
-              <Beef className='h-4 w-4 text-action-blue' />
+              <span role="img" aria-label="Cow" className='text-base leading-none'>🐄</span>
             </div>
             <p className='mt-2 text-2xl font-semibold text-primary'>{totalCattle}</p>
           </div>
@@ -244,8 +265,8 @@ const Dashboard = () => {
           gap-4
           p-4 lg:p-5
           rounded-3xl
-          border border-primary-border/30
-          bg-white
+          border border-primary-border/40 dark:border-primary-border/80
+          bg-white dark:bg-surface/95
           shadow-sm
         '>
 
@@ -262,7 +283,8 @@ const Dashboard = () => {
                 pl-10 pr-10
                 py-2.5 lg:py-3
                 rounded-xl
-                border border-primary-border/40
+                border border-primary-border/50 dark:border-primary-border/80
+                bg-white dark:bg-surface/90
                 text-sm
                 focus:outline-none
                 focus:ring-2
@@ -284,11 +306,15 @@ const Dashboard = () => {
           {/* Right side: Sort + Create */}
           <div className='flex flex-wrap items-center gap-3'>
 
-            <div className='flex items-center gap-2 rounded-xl border border-primary-border/40 px-3 py-2.5'>
+            <div className='flex items-center gap-2 rounded-xl border border-primary-border/50 dark:border-primary-border/80 bg-white dark:bg-surface/90 px-3 py-2.5'>
               <ArrowUpDown className="h-4 w-4 text-secondary opacity-70" />
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
+                onChange={(e) => {
+                  const nextValue = e.target.value
+                  setSortBy(nextValue)
+                  setSortDirection(nextValue === "cattle" ? "desc" : "asc")
+                }}
                 className='bg-transparent text-sm focus:outline-none'
               >
                 <option value="name">Name</option>
@@ -300,47 +326,93 @@ const Dashboard = () => {
               text="New Ranch"
               onClick={handleCreate}
             />
+          </div>
+        </div>
+
+        <div className='w-full rounded-3xl border border-primary-border/30 bg-white p-3 md:p-4 shadow-sm'>
+          <div className='
+            hidden lg:grid
+            lg:grid-cols-[minmax(260px,1.45fr)_minmax(230px,1fr)_minmax(150px,0.7fr)_minmax(110px,0.4fr)_minmax(120px,0.45fr)_minmax(150px,0.65fr)_56px]
+            items-center
+            px-5 py-3
+            text-xs uppercase tracking-wide text-secondary
+          '>
             <button
               type="button"
-              onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 px-3 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50"
-              aria-label="Log out"
+              onClick={() => handleSortChange("name")}
+              className={`inline-flex items-center gap-1.5 justify-start text-left hover:text-primary transition ${
+                sortBy === "name" ? "text-primary" : ""
+              }`}
             >
-              <LogOut className="h-4 w-4" />
-              Log out
+              Ranch
+              {sortIndicator("name")}
             </button>
-
+            <span>Location</span>
+            <span>Manager</span>
+            <button
+              type="button"
+              onClick={() => handleSortChange("cattle")}
+              className={`inline-flex items-center gap-1.5 justify-start text-left hover:text-primary transition ${
+                sortBy === "cattle" ? "text-primary" : ""
+              }`}
+            >
+              Cattle
+              {sortIndicator("cattle")}
+            </button>
+            <span>Loads</span>
+            <span>Updated</span>
+            <span className='sr-only'>Actions</span>
           </div>
-        </div>
 
-        <div className='grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6'>
-          {filteredRanches.map(ranch => (
-            <RanchCard
-              key={ranch.id}
-              ranchId={ranch.id}
-              ranchName={ranch.name}
-              ranchAddress={ranch.address}
-              ranchCity={ranch.city}
-              ranchZipCode={ranch.zipCode}
-              ranchState={ranch.state}
-              ranchColor={ranch.color}
-              totalCattle={ranch.totalCattle}
-              activeLots={ranch.activeLots}
-              managerName={ranch.managerName}
-              lastUpdated={ranch.lastUpdated}
-              isHighlighted={highlightRanchId === ranch.id}
-              onClick={() => handleSelect(ranch)}
-              onEdit={() => handleEdit(ranch)}
-              onDelete={() => handleDelete(ranch)}
-            />
-          ))}
+          {totalRanches === 0 ? (
+            <div className='rounded-2xl border border-dashed border-primary-border/45 bg-background/30 p-8 text-center'>
+              <h3 className='text-primary text-lg font-semibold'>No ranches yet</h3>
+              <p className='mt-2 text-sm text-secondary'>Create your first ranch to start managing inventory, historical data, and loads.</p>
+              <div className='mt-5 flex justify-center'>
+                <CreateButton text="Create first ranch" onClick={handleCreate} />
+              </div>
+            </div>
+          ) : filteredRanches.length === 0 ? (
+            <div className='rounded-2xl border border-dashed border-primary-border/45 bg-background/30 p-8 text-center'>
+              <h3 className='text-primary text-lg font-semibold'>No matching ranches</h3>
+              <p className='mt-2 text-sm text-secondary'>Adjust your search to find a ranch.</p>
+              {search && (
+                <div className='mt-4 flex justify-center'>
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    className='rounded-lg border border-primary-border/50 px-4 py-2 text-sm text-primary hover:bg-primary-border/10 transition'
+                  >
+                    Clear search
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className='flex flex-col gap-3'>
+              {filteredRanches.map(ranch => (
+                <RanchCard
+                  key={ranch.id}
+                  ranchId={ranch.id}
+                  ranchName={ranch.name}
+                  ranchAddress={ranch.address}
+                  ranchCity={ranch.city}
+                  ranchZipCode={ranch.zipCode}
+                  ranchState={ranch.state}
+                  ranchColor={ranch.color}
+                  totalCattle={ranch.totalCattle}
+                  activeLots={ranch.activeLots}
+                  managerName={ranch.managerName}
+                  lastUpdated={ranch.lastUpdated}
+                  isHighlighted={highlightRanchId === ranch.id}
+                  onClick={() => handleSelect(ranch)}
+                  onEdit={() => handleEdit(ranch)}
+                  onDelete={() => handleDelete(ranch)}
+                />
+              ))}
+            </div>
+          )}
         </div>
-
-        {filteredRanches.length === 0 && (
-          <div className='rounded-2xl border border-dashed border-primary-border/50 bg-white/60 p-8 text-center text-secondary'>
-            No ranches found with the current search.
-          </div>
-        )}
 
         {editingRanch && (
           <EditRanchModal

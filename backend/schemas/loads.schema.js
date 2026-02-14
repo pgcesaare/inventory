@@ -10,6 +10,7 @@ const notes = Joi.string().max(255)
 const eids = Joi.array()
 const primaryIDs = Joi.array().items(Joi.string())
 const trucking = Joi.string().allow(null, '')
+const createdBy = Joi.string().allow(null, '')
 
 const createLoadsSchema = Joi.object({
 
@@ -20,6 +21,7 @@ const createLoadsSchema = Joi.object({
     arrivalDate: arrivalDate.allow(null),
     notes: notes.allow(null),
     trucking: trucking,
+    createdBy: createdBy,
     eids: eids.allow(null),
     primaryIDs: primaryIDs.allow(null)
 

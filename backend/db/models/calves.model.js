@@ -152,6 +152,12 @@ const CalvesSchema = {
     field: 'protein_test',
   },
 
+  createdBy: {
+    allowNull: true,
+    type: DataTypes.STRING,
+    field: 'created_by',
+  },
+
   backTag: {
     type: DataTypes.VIRTUAL,
     get() {

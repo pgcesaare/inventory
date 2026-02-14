@@ -8,6 +8,7 @@ const zipCode = Joi.string()
 const state = Joi.string()
 const manager = Joi.string()
 const color = Joi.string()
+const createdBy = Joi.string()
 const weightCategoryEntry = Joi.object({
   key: Joi.string().allow(null, ""),
   min: Joi.number().allow(null),
@@ -26,6 +27,7 @@ const createRanchesSchema = Joi.object({
     state: state.allow(null),
     manager: manager.allow(null, ""),
     color: color,
+    createdBy: createdBy.allow(null, ""),
     weightCategories: weightCategories
 
 })

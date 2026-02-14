@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Download, Search, Trash2, X } from "lucide-react"
+import { useAuth0 } from "@auth0/auth0-react"
 import { useParams } from "react-router-dom"
 import * as XLSX from "xlsx"
 import { saveAs } from "file-saver"
@@ -259,6 +260,12 @@ const SINGLE_FORM_INITIAL = {
 const AddCalves = () => {
   const { id } = useParams()
   const token = useToken()
+  const { user } = useAuth0()
+  const createdByName =
+    user?.name ||
+    [user?.given_name, user?.family_name].filter(Boolean).join(" ").trim() ||
+    user?.nickname ||
+    null
   const { ranch, setRanch, showSuccess, showError, confirmAction } = useAppContext()
 
   const [mode, setMode] = useState("bulk")
@@ -708,7 +715,7 @@ const getSearchPlaceholder = (mode, field) => {
 
     for (const row of validRows) {
       try {
-        await createCalf(row.payload, token)
+        await createCalf({ ...row.payload, createdBy: createdByName }, token)
         created += 1
         reportRows.push({
           rowNumber: row.rowNumber,
@@ -962,6 +969,7 @@ const getSearchPlaceholder = (mode, field) => {
       proteinLevel: parseNumber(singleForm.proteinLevel),
       proteinTest: cleanText(singleForm.proteinTest).toLowerCase(),
       preDaysOnFeed: parseInteger(singleForm.preDaysOnFeed) ?? 0,
+      createdBy: createdByName,
     }
 
     const nextErrors = {}
@@ -1074,7 +1082,7 @@ const getSearchPlaceholder = (mode, field) => {
 
       for (const row of rows) {
         try {
-          await createCalf(row.payload, token)
+          await createCalf({ ...row.payload, createdBy: createdByName }, token)
           created += 1
         } catch (error) {
           failed += 1
