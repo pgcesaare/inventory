@@ -322,10 +322,6 @@ const Ranches = () => {
               </select>
             </div>
 
-            <CreateButton
-              text="New Ranch"
-              onClick={handleCreate}
-            />
           </div>
         </div>
 

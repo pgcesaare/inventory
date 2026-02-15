@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react"
-import { X } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { ChevronDown, Search, X } from "lucide-react"
 import StyledDateInput from "../shared/styledDateInput"
 
 const formatDateInput = (value) => {
@@ -27,7 +27,7 @@ const calculateDaysOnFeed = (calf) => {
   return elapsed + preDays
 }
 
-const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false }) => {
+const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false, breedOptions = [], sellerOptions = [] }) => {
   const [form, setForm] = useState({
     primaryID: "",
     EID: "",
@@ -48,6 +48,21 @@ const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false }) => 
     shippedTo: "",
     preDaysOnFeed: "0",
   })
+  const [breedMenuOpen, setBreedMenuOpen] = useState(false)
+  const [sellerMenuOpen, setSellerMenuOpen] = useState(false)
+  const [breedSearch, setBreedSearch] = useState("")
+  const [sellerSearch, setSellerSearch] = useState("")
+  const breedMenuRef = useRef(null)
+  const sellerMenuRef = useRef(null)
+
+  const visibleBreedOptions = useMemo(
+    () => breedOptions.filter((option) => String(option).toLowerCase().includes(breedSearch.toLowerCase())),
+    [breedOptions, breedSearch]
+  )
+  const visibleSellerOptions = useMemo(
+    () => sellerOptions.filter((option) => String(option).toLowerCase().includes(sellerSearch.toLowerCase())),
+    [sellerOptions, sellerSearch]
+  )
 
   useEffect(() => {
     if (!calf) return
@@ -72,6 +87,20 @@ const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false }) => 
       preDaysOnFeed: calf.preDaysOnFeed ?? 0,
     })
   }, [calf])
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (breedMenuRef.current && !breedMenuRef.current.contains(event.target)) {
+        setBreedMenuOpen(false)
+      }
+      if (sellerMenuRef.current && !sellerMenuRef.current.contains(event.target)) {
+        setSellerMenuOpen(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   if (!calf) return null
 
@@ -102,12 +131,132 @@ const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false }) => 
           <div><label className="text-xs font-semibold text-secondary">EID</label><input className={fieldClass} value={form.EID} onChange={(e) => setField("EID", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Back Tag</label><input className={fieldClass} value={form.backTag} onChange={(e) => setField("backTag", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Date In</label><StyledDateInput inputClassName={fieldClass} value={form.dateIn} onChange={(e) => setField("dateIn", e.target.value)} ariaLabel="Open date in picker" /></div>
-          <div><label className="text-xs font-semibold text-secondary">Breed</label><input className={fieldClass} value={form.breed} onChange={(e) => setField("breed", e.target.value)} /></div>
+          <div>
+            <label className="text-xs font-semibold text-secondary">Breed</label>
+            <div className="relative" ref={breedMenuRef}>
+              <button
+                type="button"
+                className={`${fieldClass} flex items-center justify-between text-left`}
+                onClick={() => setBreedMenuOpen((prev) => !prev)}
+              >
+                <span className={form.breed ? "text-primary-text" : "text-secondary"}>
+                  {form.breed || "Select breed"}
+                </span>
+                <ChevronDown className="h-4 w-4 text-secondary" />
+              </button>
+
+              {breedMenuOpen && (
+                <div className="absolute left-0 right-0 z-30 mt-1 rounded-xl border border-primary-border/30 bg-surface p-2 shadow-lg">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-secondary" />
+                    <input
+                      className="w-full rounded-lg border border-primary-border/40 py-1.5 pl-8 pr-8 text-xs"
+                      placeholder="Search breed"
+                      value={breedSearch}
+                      onChange={(e) => setBreedSearch(e.target.value)}
+                    />
+                    {breedSearch && (
+                      <button
+                        type="button"
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
+                        onClick={() => setBreedSearch("")}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-primary-border/30 p-1">
+                    {visibleBreedOptions.length === 0 ? (
+                      <p className="px-2 py-1 text-xs text-secondary">No breeds found</p>
+                    ) : (
+                      visibleBreedOptions.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          className={`w-full rounded-md px-2 py-1 text-left text-xs hover:bg-primary-border/10 ${
+                            form.breed === option ? "bg-primary-border/10 font-medium text-primary-text" : "text-primary-text"
+                          }`}
+                          onClick={() => {
+                            setField("breed", option)
+                            setBreedMenuOpen(false)
+                            setBreedSearch("")
+                          }}
+                        >
+                          {option}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
           <div><label className="text-xs font-semibold text-secondary">Sex</label><input className={fieldClass} value={form.sex} onChange={(e) => setField("sex", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Weight</label><input className={fieldClass} value={form.weight} onChange={(e) => setField("weight", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Purchase Price</label><input className={fieldClass} value={form.purchasePrice} onChange={(e) => setField("purchasePrice", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Sell Price</label><input className={fieldClass} value={form.sellPrice} onChange={(e) => setField("sellPrice", e.target.value)} /></div>
-          <div><label className="text-xs font-semibold text-secondary">Seller</label><input className={fieldClass} value={form.seller} onChange={(e) => setField("seller", e.target.value)} /></div>
+          <div>
+            <label className="text-xs font-semibold text-secondary">Seller</label>
+            <div className="relative" ref={sellerMenuRef}>
+              <button
+                type="button"
+                className={`${fieldClass} flex items-center justify-between text-left`}
+                onClick={() => setSellerMenuOpen((prev) => !prev)}
+              >
+                <span className={form.seller ? "text-primary-text" : "text-secondary"}>
+                  {form.seller || "Select seller"}
+                </span>
+                <ChevronDown className="h-4 w-4 text-secondary" />
+              </button>
+
+              {sellerMenuOpen && (
+                <div className="absolute left-0 right-0 z-30 mt-1 rounded-xl border border-primary-border/30 bg-surface p-2 shadow-lg">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-secondary" />
+                    <input
+                      className="w-full rounded-lg border border-primary-border/40 py-1.5 pl-8 pr-8 text-xs"
+                      placeholder="Search seller"
+                      value={sellerSearch}
+                      onChange={(e) => setSellerSearch(e.target.value)}
+                    />
+                    {sellerSearch && (
+                      <button
+                        type="button"
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
+                        onClick={() => setSellerSearch("")}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-primary-border/30 p-1">
+                    {visibleSellerOptions.length === 0 ? (
+                      <p className="px-2 py-1 text-xs text-secondary">No sellers found</p>
+                    ) : (
+                      visibleSellerOptions.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          className={`w-full rounded-md px-2 py-1 text-left text-xs hover:bg-primary-border/10 ${
+                            form.seller === option ? "bg-primary-border/10 font-medium text-primary-text" : "text-primary-text"
+                          }`}
+                          onClick={() => {
+                            setField("seller", option)
+                            setSellerMenuOpen(false)
+                            setSellerSearch("")
+                          }}
+                        >
+                          {option}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
           <div><label className="text-xs font-semibold text-secondary">Dairy</label><input className={fieldClass} value={form.dairy} onChange={(e) => setField("dairy", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Status</label><input className={fieldClass} value={form.status} onChange={(e) => setField("status", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Protein Level</label><input className={fieldClass} value={form.proteinLevel} onChange={(e) => setField("proteinLevel", e.target.value)} /></div>

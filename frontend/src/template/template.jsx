@@ -1,7 +1,6 @@
 import { SidebarProvider, SidebarTrigger } from "@components/ui/sidebar"
-import { Separator } from "@components/ui/separator"
 
-const Template = ({ navbar, content, title, showTopBar = true }) => {
+const Template = ({ navbar, content }) => {
   return (
     <SidebarProvider>
       <div className="flex w-full h-screen overflow-x-hidden">
@@ -12,16 +11,9 @@ const Template = ({ navbar, content, title, showTopBar = true }) => {
 
         {/* Main content area */}
         <div className="flex-1 flex flex-col h-full">
-          {showTopBar && (
-            <div className=" flex flex-row gap-2 px-4 items-center flex-none sticky top-0 z-50 border-b border-primary-border/40 bg-background h-fit">
-              <SidebarTrigger />
-              <Separator
-                orientation="vertical"
-                className="mr-2 data-[orientation=vertical]:h-"
-              />
-              <h1 className="font-bold text-base text-primary-text">{title}</h1>
-            </div>
-          )}
+          <div className="fixed left-3 top-3 z-[70] md:hidden">
+            <SidebarTrigger className="size-8 rounded-lg border border-primary-border/40 bg-white shadow-sm hover:bg-primary-border/10" />
+          </div>
 
           {/* Content fills remaining space */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden">

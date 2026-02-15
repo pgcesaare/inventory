@@ -14,6 +14,8 @@ const currentRanchID = Joi.number().integer()
 const originRanchID = Joi.number().integer()
 const seller = Joi.string()
 const dairy = Joi.string()
+const condition = Joi.string()
+const calfType = Joi.string().valid('1', '2').trim()
 const status = Joi.string().valid('feeding','sold', 'alive', 'deceased', 'shipped').insensitive().trim()
 const proteinLevel = Joi.number().precision(2)
 const proteinTest = Joi.string()
@@ -37,6 +39,8 @@ const createCalvesSchema = Joi.object({
     sellPrice: sellPrice.allow(null),
     seller: seller.required(),
     dairy: dairy.allow(null, ''),
+    condition: condition.allow(null, ''),
+    calfType: calfType.allow(null, ''),
     status: status.default('feeding'),
     proteinLevel: proteinLevel.allow(null),
     proteinTest: proteinTest.allow(null, ''),
@@ -73,6 +77,8 @@ const updateCalvesSchema = Joi.object({
     sellPrice: sellPrice.allow(null),
     seller: seller,
     dairy: dairy,
+    condition: condition.allow(null, ''),
+    calfType: calfType.allow(null, ''),
     status: status,
     proteinLevel: proteinLevel,
     proteinTest: proteinTest,

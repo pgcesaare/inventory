@@ -4,6 +4,8 @@ const calvesRouter = require('./calves')
 const ranchesRouter = require('./ranches')
 const loadsRouter = require('./loads')
 const uploadRouter = require('./upload')
+const breedsRouter = require('./breeds')
+const sellersRouter = require('./sellers')
 
 function routerApi(app){
 
@@ -17,6 +19,8 @@ function routerApi(app){
     router.use('/ranches', ranchesRouter)
     router.use('/loads', loadsRouter)
     router.use('/upload', uploadRouter)
+    router.use('/breeds', breedsRouter)
+    router.use('/sellers', sellersRouter)
     
 }
 

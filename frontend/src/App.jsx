@@ -12,6 +12,11 @@ import CreateNewRanch from "./components/ranches/createRanch";
 import Loads from "./routes/load";
 import Settings from "./routes/settings";
 import GeneralSettings from "./routes/generalSettings";
+import Statements from "./routes/statements";
+import Invoices from "./routes/invoices";
+import Prices from "./routes/prices";
+import Breeds from "./routes/breeds";
+import Sellers from "./routes/sellers";
 import FeedbackCenter from "./components/shared/feedbackCenter";
 import { AppBootSkeleton } from "./components/shared/loadingSkeletons";
 
@@ -98,6 +103,56 @@ const AppRoutes = ({ isAuthenticated }) => {
           title="General settings"
           isAuthenticated={isAuthenticated}>
           <GeneralSettings />
+        </ProtectedTemplate>
+      ),
+    },
+    {
+      path: "/statements",
+      element: (
+        ranchRouteGuard || <ProtectedTemplate
+          title="Statements"
+          isAuthenticated={isAuthenticated}>
+          <Statements />
+        </ProtectedTemplate>
+      ),
+    },
+    {
+      path: "/invoices",
+      element: (
+        ranchRouteGuard || <ProtectedTemplate
+          title="Invoices"
+          isAuthenticated={isAuthenticated}>
+          <Invoices />
+        </ProtectedTemplate>
+      ),
+    },
+    {
+      path: "/prices",
+      element: (
+        ranchRouteGuard || <ProtectedTemplate
+          title="Prices"
+          isAuthenticated={isAuthenticated}>
+          <Prices />
+        </ProtectedTemplate>
+      ),
+    },
+    {
+      path: "/breeds",
+      element: (
+        ranchRouteGuard || <ProtectedTemplate
+          title="Breeds"
+          isAuthenticated={isAuthenticated}>
+          <Breeds />
+        </ProtectedTemplate>
+      ),
+    },
+    {
+      path: "/sellers",
+      element: (
+        ranchRouteGuard || <ProtectedTemplate
+          title="Sellers"
+          isAuthenticated={isAuthenticated}>
+          <Sellers />
         </ProtectedTemplate>
       ),
     },

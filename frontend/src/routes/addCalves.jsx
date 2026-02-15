@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import { Download, Search, Trash2, X } from "lucide-react"
+import { ChevronDown, Download, Search, Trash2, X } from "lucide-react"
 import { useAuth0 } from "@auth0/auth0-react"
 import { useParams } from "react-router-dom"
 import * as XLSX from "xlsx"
@@ -8,6 +8,8 @@ import { saveAs } from "file-saver"
 import { useToken } from "../api/useToken"
 import { getRanchById } from "../api/ranches"
 import { createCalf, getManageCalvesByRanch } from "../api/calves"
+import { getBreeds } from "../api/breeds"
+import { getSellers } from "../api/sellers"
 import { useAppContext } from "../context"
 import DragAndDrop from "../components/add-calves/dragAndDrop"
 import MainDataTable from "../components/shared/mainDataTable"
@@ -35,24 +37,41 @@ const HEADER_MAP = {
   eid: "EID",
   eidoptional: "EID",
   backtag: "backTag",
+  backtagoptional: "backTag",
   datein: "dateIn",
   breed: "breed",
   sex: "sex",
   gender: "sex",
   weight: "weight",
+  weightoptional: "weight",
   purchaseprice: "purchasePrice",
+  purchasepriceoptional: "purchasePrice",
+  sellprice: "sellPrice",
+  sellpriceoptional: "sellPrice",
   seller: "seller",
   dairy: "dairy",
+  dairyoptional: "dairy",
   status: "status",
   statusoptional: "status",
   proteinlevel: "proteinLevel",
+  proteinleveloptional: "proteinLevel",
   proteintest: "proteinTest",
+  proteintestoptional: "proteinTest",
   deathdate: "deathDate",
+  deathdateoptional: "deathDate",
   shippedoutdate: "shippedOutDate",
+  shippedoutdateoptional: "shippedOutDate",
   shippedto: "shippedTo",
+  shippedtooptional: "shippedTo",
+  condition: "condition",
+  conditionoptional: "condition",
+  calftype: "calfType",
+  calftypeoptional: "calfType",
   dayesonfeed: "preDaysOnFeed",
   daysonfeed: "preDaysOnFeed",
+  daysonfeedoptional: "preDaysOnFeed",
   predaysonfeed: "preDaysOnFeed",
+  predaysonfeedoptional: "preDaysOnFeed",
 }
 
 const toKey = (value) =>
@@ -110,6 +129,13 @@ const normalizeStatus = (value) => {
   if (normalized === "sold") return "sold"
   if (normalized === "shipped" || normalized === "shipped out") return "shipped"
 
+  return ""
+}
+
+const normalizeCalfType = (value) => {
+  const normalized = cleanText(value)
+  if (!normalized) return ""
+  if (normalized === "1" || normalized === "2") return normalized
   return ""
 }
 
@@ -196,16 +222,25 @@ const mapRawRow = (row) => {
 const buildTemplateFile = () => {
   const headers = [
     "Visual Tag",
-    "EID (optional)",
-    "Back Tag",
+    "EID (OPTIONAL)",
+    "Back Tag (OPTIONAL)",
     "Date In",
     "Breed",
     "Sex",
-    "Weight",
-    "Purchase Price",
+    "Weight (OPTIONAL)",
+    "Purchase Price (OPTIONAL)",
+    "Sell Price (OPTIONAL)",
     "Seller",
-    "Dairy",
-    "Status (optional)",
+    "Dairy (OPTIONAL)",
+    "Status (OPTIONAL)",
+    "Protein Level (OPTIONAL)",
+    "Protein Test (OPTIONAL)",
+    "Death Date (OPTIONAL)",
+    "Shipped Out Date (OPTIONAL)",
+    "Shipped To (OPTIONAL)",
+    "Condition (OPTIONAL)",
+    "Calf Type (OPTIONAL)",
+    "Pre Days On Feed (OPTIONAL)",
   ]
 
   const sampleRow = [
@@ -217,9 +252,18 @@ const buildTemplateFile = () => {
     "bull",
     420.5,
     1450.5,
+    1780,
     "Acme Farms",
     "Sunny Dairy",
     "feeding",
+    3.2,
+    "pending",
+    "",
+    "",
+    "",
+    "",
+    "1",
+    0,
   ]
 
   const worksheet = XLSX.utils.aoa_to_sheet([headers, sampleRow])
@@ -292,37 +336,23 @@ const AddCalves = () => {
   const [previewDateFrom, setPreviewDateFrom] = useState("")
   const [previewDateTo, setPreviewDateTo] = useState("")
   const [previewRowLimit, setPreviewRowLimit] = useState(15)
+  const [catalogBreedOptions, setCatalogBreedOptions] = useState([])
+  const [catalogSellerOptions, setCatalogSellerOptions] = useState([])
 
   const [singleForm, setSingleForm] = useState(SINGLE_FORM_INITIAL)
   const [singleLoading, setSingleLoading] = useState(false)
   const [singleMessage, setSingleMessage] = useState("")
   const [singleMessageTone, setSingleMessageTone] = useState("idle")
   const [singleErrors, setSingleErrors] = useState({})
-
-  const [groupForm, setGroupForm] = useState({
-    count: "10",
-    tagPrefix: "TAG-",
-    backTagPrefix: "B-",
-    startNumber: "1",
-    padLength: "3",
-    eidPrefix: "",
-    dateIn: "",
-    breed: "",
-    sex: "bull",
-    weight: "",
-    purchasePrice: "",
-    seller: "",
-    dairy: "",
-    proteinLevel: "",
-    proteinTest: "pending",
-    preDaysOnFeed: "0",
-  })
-  const [groupLoading, setGroupLoading] = useState(false)
-  const [groupResult, setGroupResult] = useState({ created: 0, failed: 0, errors: [] })
-  const [groupErrors, setGroupErrors] = useState({})
+  const [singleBreedMenuOpen, setSingleBreedMenuOpen] = useState(false)
+  const [singleBreedSearch, setSingleBreedSearch] = useState("")
+  const [singleSellerMenuOpen, setSingleSellerMenuOpen] = useState(false)
+  const [singleSellerSearch, setSingleSellerSearch] = useState("")
   const existingIdentifierRef = useRef({ tag: new Set(), eid: new Set(), backTag: new Set() })
   const validatedRowsRef = useRef(null)
   const duplicateAlertsRef = useRef(null)
+  const singleBreedMenuRef = useRef(null)
+  const singleSellerMenuRef = useRef(null)
   const [shouldScrollToValidated, setShouldScrollToValidated] = useState(false)
 
   useEffect(() => {
@@ -367,6 +397,62 @@ const AddCalves = () => {
     fetchExistingIdentifiers()
   }, [token, id])
 
+  useEffect(() => {
+    if (!token) return
+
+    const fetchBreeds = async () => {
+      try {
+        const data = await getBreeds(token)
+        const options = Array.isArray(data)
+          ? data
+            .map((item) => cleanText(item?.name))
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b))
+          : []
+        setCatalogBreedOptions(options)
+      } catch (error) {
+        console.error("Error loading breeds catalog:", error)
+      }
+    }
+
+    fetchBreeds()
+  }, [token])
+
+  useEffect(() => {
+    if (!token) return
+
+    const fetchSellers = async () => {
+      try {
+        const data = await getSellers(token)
+        const options = Array.isArray(data)
+          ? data
+            .map((item) => cleanText(item?.name))
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b))
+          : []
+        setCatalogSellerOptions(options)
+      } catch (error) {
+        console.error("Error loading sellers catalog:", error)
+      }
+    }
+
+    fetchSellers()
+  }, [token])
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (singleBreedMenuRef.current && !singleBreedMenuRef.current.contains(event.target)) {
+        setSingleBreedMenuOpen(false)
+      }
+      if (singleSellerMenuRef.current && !singleSellerMenuRef.current.contains(event.target)) {
+        setSingleSellerMenuOpen(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
   const summaryItems = useMemo(
     () => {
       if (mode === "bulk") {
@@ -386,13 +472,7 @@ const AddCalves = () => {
           { label: "Created", value: singleMessageTone === "success" ? 1 : 0 },
         ]
       }
-
-      return [
-        { label: "Mode", value: "Quick group" },
-        { label: "Requested", value: parseInteger(groupForm.count) || 0 },
-        { label: "Created", value: groupResult.created },
-        { label: "Failed", value: groupResult.failed },
-      ]
+      return []
     },
     [
       mode,
@@ -406,9 +486,6 @@ const AddCalves = () => {
       singleForm.breed,
       singleForm.sex,
       singleForm.seller,
-      groupForm.count,
-      groupResult.created,
-      groupResult.failed,
     ]
   )
 
@@ -461,6 +538,14 @@ const AddCalves = () => {
   const previewBreedOptions = useMemo(
     () => [...new Set(previewRows.map((row) => row.breed).filter((value) => value && value !== "-"))],
     [previewRows]
+  )
+  const visibleSingleBreedOptions = useMemo(
+    () => catalogBreedOptions.filter((option) => String(option).toLowerCase().includes(singleBreedSearch.toLowerCase())),
+    [catalogBreedOptions, singleBreedSearch]
+  )
+  const visibleSingleSellerOptions = useMemo(
+    () => catalogSellerOptions.filter((option) => String(option).toLowerCase().includes(singleSellerSearch.toLowerCase())),
+    [catalogSellerOptions, singleSellerSearch]
   )
   const previewSellerOptions = useMemo(
     () => [...new Set(previewRows.map((row) => row.seller).filter((value) => value && value !== "-"))],
@@ -591,8 +676,14 @@ const getSearchPlaceholder = (mode, field) => {
           sex: normalizeSex(row.sex),
           weight: parseNumber(row.weight),
           purchasePrice: parseNumber(row.purchasePrice),
+          sellPrice: parseNumber(row.sellPrice),
           seller: cleanText(row.seller),
           dairy: cleanText(row.dairy),
+          deathDate: normalizeDate(row.deathDate),
+          shippedOutDate: normalizeDate(row.shippedOutDate),
+          shippedTo: cleanText(row.shippedTo),
+          condition: cleanText(row.condition),
+          calfType: normalizeCalfType(row.calfType) || undefined,
           // Ranch IDs from Excel are ignored; both are always set by current route ranch.
           currentRanchID: ranchId,
           originRanchID: ranchId,
@@ -614,6 +705,9 @@ const getSearchPlaceholder = (mode, field) => {
         if (!payload.currentRanchID) errors.push("currentRanchID is required")
         if (cleanText(row.status) && !normalizeStatus(row.status)) {
           errors.push(`Status value "${cleanText(row.status)}" is invalid. Use feeding, alive, sold, shipped, or dead/deceased`)
+        }
+        if (cleanText(row.calfType) && !payload.calfType) {
+          errors.push(`Calf Type value "${cleanText(row.calfType)}" is invalid. Use 1 or 2`)
         }
 
         const tagKey = normalizeIdentifier(payload.primaryID)
@@ -947,6 +1041,10 @@ const getSearchPlaceholder = (mode, field) => {
     setSingleErrors({})
     setSingleMessage("")
     setSingleMessageTone("idle")
+    setSingleBreedMenuOpen(false)
+    setSingleBreedSearch("")
+    setSingleSellerMenuOpen(false)
+    setSingleSellerSearch("")
   }
 
   const handleCreateSingle = async () => {
@@ -1003,107 +1101,6 @@ const getSearchPlaceholder = (mode, field) => {
     }
   }
 
-  const handleGroupChange = (key, value) => {
-    if (groupErrors[key]) {
-      setGroupErrors((prev) => {
-        const next = { ...prev }
-        delete next[key]
-        return next
-      })
-    }
-    setGroupForm((prev) => ({ ...prev, [key]: value }))
-  }
-
-  const handleCreateGroup = async () => {
-    if (!token || !id || groupLoading) return
-
-    const count = parseInteger(groupForm.count)
-    const startNumber = parseInteger(groupForm.startNumber) ?? 1
-    const padLength = parseInteger(groupForm.padLength) ?? 3
-
-    const nextErrors = {}
-    if (!count || count < 1 || count > 1000) nextErrors.count = "Count must be between 1 and 1000."
-    if (!cleanText(groupForm.tagPrefix)) nextErrors.tagPrefix = "Tag Prefix is required."
-    if (!cleanText(groupForm.breed)) nextErrors.breed = "Breed is required."
-    if (!cleanText(groupForm.seller)) nextErrors.seller = "Seller is required."
-
-    const sex = normalizeSex(groupForm.sex)
-    if (!sex) {
-      nextErrors.sex = "Sex is invalid."
-    }
-
-    if (!normalizeDate(groupForm.dateIn)) {
-      nextErrors.dateIn = "Date In is required."
-    }
-
-    if (Object.keys(nextErrors).length > 0) {
-      setGroupErrors(nextErrors)
-      setGroupResult({ created: 0, failed: 0, errors: [] })
-      return
-    }
-
-    const rows = Array.from({ length: count }).map((_, index) => {
-      const sequence = String(startNumber + index).padStart(Math.max(1, padLength), "0")
-      const primaryID = `${cleanText(groupForm.tagPrefix)}${sequence}`
-      const backTag = `${cleanText(groupForm.backTagPrefix)}${sequence}`
-      const eidPrefix = cleanText(groupForm.eidPrefix)
-      const EID = eidPrefix ? `${eidPrefix}${sequence}` : ""
-
-      return {
-        index: index + 1,
-        payload: {
-          primaryID,
-          EID,
-          backTag,
-          dateIn: normalizeDate(groupForm.dateIn),
-          breed: cleanText(groupForm.breed).toLowerCase(),
-          sex,
-          weight: parseNumber(groupForm.weight),
-          purchasePrice: parseNumber(groupForm.purchasePrice),
-          seller: cleanText(groupForm.seller),
-          dairy: cleanText(groupForm.dairy),
-          currentRanchID: Number(id),
-          originRanchID: Number(id),
-          status: "feeding",
-          proteinLevel: parseNumber(groupForm.proteinLevel),
-          proteinTest: cleanText(groupForm.proteinTest).toLowerCase(),
-          preDaysOnFeed: parseInteger(groupForm.preDaysOnFeed) ?? 0,
-        },
-      }
-    })
-
-    let created = 0
-    let failed = 0
-    const errors = []
-
-    try {
-      setGroupLoading(true)
-      setGroupErrors({})
-
-      for (const row of rows) {
-        try {
-          await createCalf({ ...row.payload, createdBy: createdByName }, token)
-          created += 1
-        } catch (error) {
-          failed += 1
-          errors.push({
-            rowNumber: row.index,
-            message: error?.response?.data?.message || error?.message || "Unknown error",
-          })
-        }
-      }
-
-      setGroupResult({ created, failed, errors })
-      if (created > 0) {
-        showSuccess(`Quick group finished. Created: ${created}, Failed: ${failed}.`, "Upload Complete")
-      } else if (failed > 0) {
-        showError(`Quick group failed. Failed: ${failed}.`)
-      }
-    } finally {
-      setGroupLoading(false)
-    }
-  }
-
   if (!ranch) return <RanchPageSkeleton />
 
   const canValidateFile = Boolean(file) && !isParsing && !isSubmitting
@@ -1123,7 +1120,7 @@ const getSearchPlaceholder = (mode, field) => {
           <div>
             <h2 className="text-title-h3 text-primary-text">Add Calves</h2>
             <p className="text-sm text-secondary">
-              Register calves for <span className="font-semibold">{ranch.name}</span> by Excel, one by one, or quick group.
+              Register calves for <span className="font-semibold">{ranch.name}</span> by Excel or one by one.
             </p>
           </div>
 
@@ -1138,7 +1135,7 @@ const getSearchPlaceholder = (mode, field) => {
         </div>
 
         <div className="rounded-2xl border border-primary-border/30 bg-white p-2 flex flex-wrap gap-2">
-          {[{ id: "bulk", label: "Bulk Excel" }, { id: "single", label: "One by one" }, { id: "group", label: "Quick group" }].map((item) => (
+          {[{ id: "bulk", label: "Bulk Excel" }, { id: "single", label: "One by one" }].map((item) => (
             <button
               key={item.id}
               type="button"
@@ -1568,12 +1565,66 @@ const getSearchPlaceholder = (mode, field) => {
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Breed<RequiredMark /></label>
-              <div className="relative">
-                <input className={clearableInputClass} value={singleForm.breed} onChange={(e) => handleSingleChange("breed", e.target.value)} />
-                {singleForm.breed && (
-                  <button type="button" className={clearButtonClass} onClick={() => handleSingleChange("breed", "")}>
-                    <X className="h-3.5 w-3.5" />
-                  </button>
+              <div className="relative" ref={singleBreedMenuRef}>
+                <button
+                  type="button"
+                  disabled={catalogBreedOptions.length === 0}
+                  className={`${fieldClass} flex items-center justify-between text-left disabled:cursor-not-allowed disabled:opacity-60`}
+                  onClick={() => {
+                    if (catalogBreedOptions.length === 0) return
+                    setSingleBreedMenuOpen((prev) => !prev)
+                  }}
+                >
+                  <span className={singleForm.breed ? "text-primary-text" : "text-secondary"}>
+                    {catalogBreedOptions.length === 0 ? "No breeds avaliable" : (singleForm.breed || "Select breed")}
+                  </span>
+                  <ChevronDown className="h-4 w-4 text-secondary" />
+                </button>
+
+                {singleBreedMenuOpen && (
+                  <div className="absolute left-0 right-0 z-30 mt-1 rounded-xl border border-primary-border/30 bg-surface p-2 shadow-lg">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-secondary" />
+                      <input
+                        className="w-full rounded-lg border border-primary-border/40 py-1.5 pl-8 pr-8 text-xs"
+                        placeholder="Search breed"
+                        value={singleBreedSearch}
+                        onChange={(e) => setSingleBreedSearch(e.target.value)}
+                      />
+                      {singleBreedSearch && (
+                        <button
+                          type="button"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
+                          onClick={() => setSingleBreedSearch("")}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-primary-border/30 p-1">
+                      {visibleSingleBreedOptions.length === 0 ? (
+                        <p className="px-2 py-1 text-xs text-secondary">No breeds found</p>
+                      ) : (
+                        visibleSingleBreedOptions.map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            className={`w-full rounded-md px-2 py-1 text-left text-xs hover:bg-primary-border/10 ${
+                              singleForm.breed === option ? "bg-primary-border/10 font-medium text-primary-text" : "text-primary-text"
+                            }`}
+                            onClick={() => {
+                              handleSingleChange("breed", option)
+                              setSingleBreedMenuOpen(false)
+                              setSingleBreedSearch("")
+                            }}
+                          >
+                            {option}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
               {singleErrors.breed && <p className="mt-1 text-xs text-red-600">{singleErrors.breed}</p>}
@@ -1589,12 +1640,66 @@ const getSearchPlaceholder = (mode, field) => {
             </div>
             <div>
               <label className="text-xs font-semibold text-secondary">Seller<RequiredMark /></label>
-              <div className="relative">
-                <input className={clearableInputClass} value={singleForm.seller} onChange={(e) => handleSingleChange("seller", e.target.value)} />
-                {singleForm.seller && (
-                  <button type="button" className={clearButtonClass} onClick={() => handleSingleChange("seller", "")}>
-                    <X className="h-3.5 w-3.5" />
-                  </button>
+              <div className="relative" ref={singleSellerMenuRef}>
+                <button
+                  type="button"
+                  disabled={catalogSellerOptions.length === 0}
+                  className={`${fieldClass} flex items-center justify-between text-left disabled:cursor-not-allowed disabled:opacity-60`}
+                  onClick={() => {
+                    if (catalogSellerOptions.length === 0) return
+                    setSingleSellerMenuOpen((prev) => !prev)
+                  }}
+                >
+                  <span className={singleForm.seller ? "text-primary-text" : "text-secondary"}>
+                    {catalogSellerOptions.length === 0 ? "No sellers avaliable" : (singleForm.seller || "Select seller")}
+                  </span>
+                  <ChevronDown className="h-4 w-4 text-secondary" />
+                </button>
+
+                {singleSellerMenuOpen && (
+                  <div className="absolute left-0 right-0 z-30 mt-1 rounded-xl border border-primary-border/30 bg-surface p-2 shadow-lg">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-secondary" />
+                      <input
+                        className="w-full rounded-lg border border-primary-border/40 py-1.5 pl-8 pr-8 text-xs"
+                        placeholder="Search seller"
+                        value={singleSellerSearch}
+                        onChange={(e) => setSingleSellerSearch(e.target.value)}
+                      />
+                      {singleSellerSearch && (
+                        <button
+                          type="button"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
+                          onClick={() => setSingleSellerSearch("")}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-primary-border/30 p-1">
+                      {visibleSingleSellerOptions.length === 0 ? (
+                        <p className="px-2 py-1 text-xs text-secondary">No sellers found</p>
+                      ) : (
+                        visibleSingleSellerOptions.map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            className={`w-full rounded-md px-2 py-1 text-left text-xs hover:bg-primary-border/10 ${
+                              singleForm.seller === option ? "bg-primary-border/10 font-medium text-primary-text" : "text-primary-text"
+                            }`}
+                            onClick={() => {
+                              handleSingleChange("seller", option)
+                              setSingleSellerMenuOpen(false)
+                              setSingleSellerSearch("")
+                            }}
+                          >
+                            {option}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
               {singleErrors.seller && <p className="mt-1 text-xs text-red-600">{singleErrors.seller}</p>}
@@ -1689,132 +1794,6 @@ const getSearchPlaceholder = (mode, field) => {
           </div>
         )}
 
-        {mode === "group" && (
-          <div className="w-full min-w-0 overflow-x-hidden rounded-2xl border border-primary-border/30 bg-white shadow-sm p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="lg:col-span-2 rounded-xl border border-primary-border/30 bg-primary-border/5 p-4">
-              <h3 className="text-sm font-semibold text-primary-text">Quick Group Instructions</h3>
-              <ol className="mt-2 list-decimal pl-5 text-xs text-secondary space-y-1">
-                <li>Set `Count` with the number of calves to create.</li>
-                <li>Set `Tag Prefix` and optionally `EID Prefix`.</li>
-                <li>Set `Start Number` and `Pad Length` to control numbering format.</li>
-                <li>Fill shared data (`Breed`, `Sex`, `Seller`, etc.).</li>
-                <li>Click `Create group` to register all calves.</li>
-              </ol>
-              <p className="mt-3 text-xs text-primary-text">
-                Example: Prefix `TAG-`, Start `1`, Pad `3`, Count `4` creates:
-                <span className="font-semibold"> TAG-001, TAG-002, TAG-003, TAG-004</span>.
-              </p>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-secondary">Count<RequiredMark /></label>
-              <input className={fieldClass} value={groupForm.count} onChange={(e) => handleGroupChange("count", e.target.value)} />
-              {groupErrors.count && <p className="mt-1 text-xs text-red-600">{groupErrors.count}</p>}
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">Tag Prefix<RequiredMark /></label>
-              <input className={fieldClass} value={groupForm.tagPrefix} onChange={(e) => handleGroupChange("tagPrefix", e.target.value)} />
-              {groupErrors.tagPrefix && <p className="mt-1 text-xs text-red-600">{groupErrors.tagPrefix}</p>}
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">Back Tag Prefix</label>
-              <input className={fieldClass} value={groupForm.backTagPrefix} onChange={(e) => handleGroupChange("backTagPrefix", e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">Start Number</label>
-              <input className={fieldClass} value={groupForm.startNumber} onChange={(e) => handleGroupChange("startNumber", e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">Pad Length</label>
-              <input className={fieldClass} value={groupForm.padLength} onChange={(e) => handleGroupChange("padLength", e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">EID Prefix</label>
-              <input className={fieldClass} value={groupForm.eidPrefix} onChange={(e) => handleGroupChange("eidPrefix", e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">Date In<RequiredMark /></label>
-              <StyledDateInput
-                inputClassName={fieldClass}
-                value={groupForm.dateIn}
-                onChange={(e) => handleGroupChange("dateIn", e.target.value)}
-                ariaLabel="Open group date picker"
-              />
-              {groupErrors.dateIn && <p className="mt-1 text-xs text-red-600">{groupErrors.dateIn}</p>}
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">Breed<RequiredMark /></label>
-              <input className={fieldClass} value={groupForm.breed} onChange={(e) => handleGroupChange("breed", e.target.value)} />
-              {groupErrors.breed && <p className="mt-1 text-xs text-red-600">{groupErrors.breed}</p>}
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">Sex<RequiredMark /></label>
-              <select className={fieldClass} value={groupForm.sex} onChange={(e) => handleGroupChange("sex", e.target.value)}>
-                {SEX_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-              {groupErrors.sex && <p className="mt-1 text-xs text-red-600">{groupErrors.sex}</p>}
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">Seller<RequiredMark /></label>
-              <input className={fieldClass} value={groupForm.seller} onChange={(e) => handleGroupChange("seller", e.target.value)} />
-              {groupErrors.seller && <p className="mt-1 text-xs text-red-600">{groupErrors.seller}</p>}
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">Weight</label>
-              <input className={fieldClass} value={groupForm.weight} onChange={(e) => handleGroupChange("weight", e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">Purchase Price</label>
-              <input className={fieldClass} value={groupForm.purchasePrice} onChange={(e) => handleGroupChange("purchasePrice", e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">Dairy</label>
-              <input className={fieldClass} value={groupForm.dairy} onChange={(e) => handleGroupChange("dairy", e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">Protein Level</label>
-              <input className={fieldClass} value={groupForm.proteinLevel} onChange={(e) => handleGroupChange("proteinLevel", e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">Protein Test</label>
-              <select className={fieldClass} value={groupForm.proteinTest} onChange={(e) => handleGroupChange("proteinTest", e.target.value)}>
-                <option value="pending">Pending</option>
-                <option value="pass">Pass</option>
-                <option value="fail">Fail</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-secondary">Pre-Days-On-Feed</label>
-              <input className={fieldClass} value={groupForm.preDaysOnFeed} onChange={(e) => handleGroupChange("preDaysOnFeed", e.target.value)} />
-            </div>
-
-            <div className="lg:col-span-2 flex items-center gap-3 mt-2">
-              <button
-                type="button"
-                onClick={handleCreateGroup}
-                disabled={groupLoading}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-action-blue/80 bg-action-blue px-2.5 py-1.5 text-xs font-medium text-white hover:bg-action-blue/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-200 cursor-pointer"
-              >
-                {groupLoading ? "Creating group..." : "Create group"}
-              </button>
-            </div>
-
-            {groupResult.failed > 0 && (
-              <div className="lg:col-span-2 rounded-2xl border border-yellow-200 bg-yellow-50 p-4">
-                <h3 className="text-sm font-semibold text-yellow-700">Rows failed during creation</h3>
-                <ul className="mt-2 space-y-1 text-xs text-yellow-800">
-                  {groupResult.errors.slice(0, 15).map((item) => (
-                    <li key={`group-error-${item.rowNumber}`}>
-                      Row {item.rowNumber}: {item.message}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   )

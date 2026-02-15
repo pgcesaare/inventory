@@ -4,19 +4,21 @@ import { useToken } from '../api/useToken'
 import { useAppContext } from '../context'
 import { RanchSwitcher } from './components/ranchSwitcher'
 import { NavLink, useLocation, useParams } from 'react-router-dom'
-import { ChevronDown, Container, FileClock, LayoutDashboard, PencilLine, Settings, Sheet, Tag, Truck } from 'lucide-react'
+import { ChevronDown, Container, FileClock, FileText, LayoutDashboard, PencilLine, ReceiptText, Settings, Sheet, Tag, Tags, Truck } from 'lucide-react'
 
 import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  SidebarTrigger,
 } from "@components/ui/sidebar"
 
 
@@ -100,11 +102,28 @@ export function AppSidebar() {
 
   return (
 
-    <Sidebar className="border-none">
+    <Sidebar collapsible="icon" className="border-none">
       <SidebarContent>
+        <SidebarGroup className="pt-3">
+          <SidebarGroupContent className="px-0">
+            <div className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
+              <SidebarMenuButton asChild className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+                <NavLink to="/ranches">
+                  <LayoutDashboard />
+                  <span>Ranches</span>
+                </NavLink>
+              </SidebarMenuButton>
+              <SidebarTrigger className="size-7 shrink-0 rounded-md border border-primary-border/40 bg-sidebar hover:bg-primary-border/10" />
+            </div>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
         {hasSelectedRanch && Array.isArray(ranches) && (
-          <RanchSwitcher currentRanch={ranch} ranches={ranches}/>
+          <div className="group-data-[collapsible=icon]:hidden">
+            <RanchSwitcher currentRanch={ranch} ranches={ranches}/>
+          </div>
         )}
+        </SidebarGroup>
         {hasSelectedRanch && (
           <SidebarGroup>
             <SidebarGroupContent>
@@ -127,7 +146,7 @@ export function AppSidebar() {
                   >
                     <Tag />
                     <span>Calves</span>
-                    <ChevronDown className={`ml-auto transition-transform ${openCalvesMenu ? "rotate-180" : ""}`} />
+                    <ChevronDown className={`ml-auto transition-transform group-data-[collapsible=icon]:hidden ${openCalvesMenu ? "rotate-180" : ""}`} />
                   </SidebarMenuButton>
                   {openCalvesMenu && (
                     <SidebarMenuSub>
@@ -148,17 +167,32 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         )}
-        <SidebarGroup className="mt-auto border-t border-primary-border/20 pt-3">
+        <SidebarGroup>
+          <SidebarGroupLabel>Billing</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
-                  <NavLink to="/ranches">
-                    <LayoutDashboard />
-                    <span>Ranches</span>
+                  <NavLink to="/statements">
+                    <FileText />
+                    <span>Statements</span>
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <NavLink to="/invoices">
+                    <ReceiptText />
+                    <span>Invoices</span>
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup className="mt-auto border-t border-primary-border/20 pt-3">
+          <SidebarGroupContent>
+            <SidebarMenu>
               <SidebarMenuItem>
                 {canOpenSettings ? (
                   <SidebarMenuButton asChild>

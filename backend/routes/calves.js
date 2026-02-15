@@ -5,6 +5,7 @@ const CalvesService = require('../services/calves.service')
 const moment = require('moment')
 const XLSX = require('xlsx')
 const { getCreatedByFromRequest } = require('../utils/authUser')
+const { ensureBreedName, ensureSellerName } = require('../services/masterData.service')
 
 const router = express.Router()
 
@@ -86,6 +87,20 @@ const normalizeDateField = (value) => {
   return date.startOf('day').toISOString()
 }
 
+const standardizeMasterFields = async (payload) => {
+  const nextPayload = { ...payload }
+
+  if (Object.prototype.hasOwnProperty.call(nextPayload, 'breed')) {
+    nextPayload.breed = await ensureBreedName(nextPayload.breed)
+  }
+
+  if (Object.prototype.hasOwnProperty.call(nextPayload, 'seller')) {
+    nextPayload.seller = await ensureSellerName(nextPayload.seller)
+  }
+
+  return nextPayload
+}
+
 router.get('/',
   async (req, res, next) => {
     try {
@@ -155,7 +170,7 @@ router.post('/',
   validatorHandler(createCalvesSchema, 'body'),
   async (req, res, next) => {
     try {
-      const body = normalizeIncomingCalfPayload(req.body, { forceCreationFields: true })
+      let body = normalizeIncomingCalfPayload(req.body, { forceCreationFields: true })
       const fallbackCreatedBy = String(body?.createdBy || '').trim() || null
       const createdBy = getCreatedByFromRequest(req) || fallbackCreatedBy
 
@@ -163,6 +178,7 @@ router.post('/',
       body.deathDate = normalizeDateField(body.deathDate)
       body.shippedOutDate = normalizeDateField(body.shippedOutDate)
       body.createdBy = createdBy
+      body = await standardizeMasterFields(body)
 
       const newCalf = await service.create(body)
       res.status(201).json(newCalf)
@@ -179,10 +195,11 @@ router.patch('/:id',
   async (req, res, next) => {
     try {
       const { id } = req.params
-      const body = normalizeIncomingCalfPayload(req.body)
+      let body = normalizeIncomingCalfPayload(req.body)
       if (body.placedDate !== undefined) body.placedDate = normalizeDateField(body.placedDate)
       if (body.deathDate !== undefined) body.deathDate = normalizeDateField(body.deathDate)
       if (body.shippedOutDate !== undefined) body.shippedOutDate = normalizeDateField(body.shippedOutDate)
+      body = await standardizeMasterFields(body)
       res.status(201).json(await service.update(id, body))
     } catch (error) {
       next(error)

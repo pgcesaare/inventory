@@ -1,6 +1,6 @@
 import { useLocation } from "react-router-dom"
 import { AppSidebar } from "../appSidebar"
-import { RanchesSidebar } from "../ranchesSidebar"
+import { GeneralSidebar } from "../generalSidebar"
  
 export default function NavbarLayout({ children }) {
   const location = useLocation()
@@ -8,7 +8,7 @@ export default function NavbarLayout({ children }) {
 
   return (
     <>
-      {isRanchDetailsRoute ? <AppSidebar /> : <RanchesSidebar />}
+      {isRanchDetailsRoute ? <AppSidebar /> : <GeneralSidebar />}
       <main>
         {children}
       </main>

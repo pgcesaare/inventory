@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { Download, Search, X } from "lucide-react"
 import * as XLSX from "xlsx"
@@ -59,6 +59,12 @@ const Inventory = () => {
     const [lastBulkChange, setLastBulkChange] = useState(null)
     const [lastDeletedCalves, setLastDeletedCalves] = useState([])
     const [manageMessage, setManageMessage] = useState("")
+    const [bulkBreedMenuOpen, setBulkBreedMenuOpen] = useState(false)
+    const [bulkSellerMenuOpen, setBulkSellerMenuOpen] = useState(false)
+    const [bulkBreedSearch, setBulkBreedSearch] = useState("")
+    const [bulkSellerSearch, setBulkSellerSearch] = useState("")
+    const bulkBreedMenuRef = useRef(null)
+    const bulkSellerMenuRef = useRef(null)
     const [mainSearch, setMainSearch] = useState("")
     const [mainSearchMode, setMainSearchMode] = useState("single")
     const [mainSearchMatch, setMainSearchMatch] = useState("contains")
@@ -92,6 +98,20 @@ const Inventory = () => {
       { value: "sold", label: "Sold" },
       { value: "dead", label: "Dead" },
     ]
+
+    useEffect(() => {
+      const handleClickOutside = (event) => {
+        if (bulkBreedMenuRef.current && !bulkBreedMenuRef.current.contains(event.target)) {
+          setBulkBreedMenuOpen(false)
+        }
+        if (bulkSellerMenuRef.current && !bulkSellerMenuRef.current.contains(event.target)) {
+          setBulkSellerMenuOpen(false)
+        }
+      }
+
+      document.addEventListener("mousedown", handleClickOutside)
+      return () => document.removeEventListener("mousedown", handleClickOutside)
+    }, [])
 
     useEffect(() => {
       if (!ranch && token && id) {
@@ -182,6 +202,14 @@ const Inventory = () => {
     const sellerOptions = useMemo(
       () => [...new Set(calves.map((calf) => calf.seller).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))),
       [calves]
+    )
+    const visibleBulkBreedOptions = useMemo(
+      () => breedOptions.filter((option) => String(option).toLowerCase().includes(bulkBreedSearch.toLowerCase())),
+      [breedOptions, bulkBreedSearch]
+    )
+    const visibleBulkSellerOptions = useMemo(
+      () => sellerOptions.filter((option) => String(option).toLowerCase().includes(bulkSellerSearch.toLowerCase())),
+      [sellerOptions, bulkSellerSearch]
     )
     const effectiveWeightCategories = useMemo(
       () => normalizeWeightCategories(ranch?.weightCategories),
@@ -1156,6 +1184,10 @@ const Inventory = () => {
                     onChange={(e) => {
                       const nextField = e.target.value
                       setBulkField(nextField)
+                      setBulkBreedMenuOpen(false)
+                      setBulkSellerMenuOpen(false)
+                      setBulkBreedSearch("")
+                      setBulkSellerSearch("")
                       if (nextField === "status") {
                         setBulkValue("feeding")
                       } else if (bulkValue === "feeding" || bulkValue === "alive" || bulkValue === "shipped" || bulkValue === "sold" || bulkValue === "dead") {
@@ -1185,6 +1217,124 @@ const Inventory = () => {
                         <option key={option.value} value={option.value}>{option.label}</option>
                       ))}
                     </select>
+                  ) : bulkField === "breed" ? (
+                    <div className="relative" ref={bulkBreedMenuRef}>
+                      <button
+                        type="button"
+                        disabled={breedOptions.length === 0}
+                        className="w-full h-[36px] rounded-xl border border-primary-border/40 px-2.5 py-1.5 text-xs text-left flex items-center justify-between disabled:opacity-60 disabled:cursor-not-allowed"
+                        onClick={() => {
+                          if (breedOptions.length === 0) return
+                          setBulkBreedMenuOpen((prev) => !prev)
+                        }}
+                      >
+                        <span className={bulkValue ? "text-primary-text" : "text-secondary"}>
+                          {breedOptions.length === 0 ? "No breeds avaliable" : (bulkValue || "Select breed")}
+                        </span>
+                        <span className="text-secondary">▼</span>
+                      </button>
+                      {bulkBreedMenuOpen && (
+                        <div className="absolute left-0 right-0 z-30 mt-1 rounded-xl border border-primary-border/30 bg-surface p-2 shadow-lg">
+                          <div className="relative">
+                            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-secondary" />
+                            <input
+                              className="w-full rounded-lg border border-primary-border/40 py-1.5 pl-8 pr-8 text-xs"
+                              placeholder="Search breed"
+                              value={bulkBreedSearch}
+                              onChange={(e) => setBulkBreedSearch(e.target.value)}
+                            />
+                            {bulkBreedSearch && (
+                              <button
+                                type="button"
+                                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
+                                onClick={() => setBulkBreedSearch("")}
+                              >
+                                <X className="size-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-primary-border/30 p-1">
+                            {visibleBulkBreedOptions.length === 0 ? (
+                              <p className="px-2 py-1 text-xs text-secondary">No breeds found</p>
+                            ) : (
+                              visibleBulkBreedOptions.map((option) => (
+                                <button
+                                  key={option}
+                                  type="button"
+                                  className={`w-full rounded-md px-2 py-1 text-left text-xs hover:bg-primary-border/10 ${bulkValue === option ? "bg-primary-border/10 font-medium text-primary-text" : "text-primary-text"}`}
+                                  onClick={() => {
+                                    setBulkValue(option)
+                                    setBulkBreedMenuOpen(false)
+                                    setBulkBreedSearch("")
+                                  }}
+                                >
+                                  {option}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : bulkField === "seller" ? (
+                    <div className="relative" ref={bulkSellerMenuRef}>
+                      <button
+                        type="button"
+                        disabled={sellerOptions.length === 0}
+                        className="w-full h-[36px] rounded-xl border border-primary-border/40 px-2.5 py-1.5 text-xs text-left flex items-center justify-between disabled:opacity-60 disabled:cursor-not-allowed"
+                        onClick={() => {
+                          if (sellerOptions.length === 0) return
+                          setBulkSellerMenuOpen((prev) => !prev)
+                        }}
+                      >
+                        <span className={bulkValue ? "text-primary-text" : "text-secondary"}>
+                          {sellerOptions.length === 0 ? "No sellers avaliable" : (bulkValue || "Select seller")}
+                        </span>
+                        <span className="text-secondary">▼</span>
+                      </button>
+                      {bulkSellerMenuOpen && (
+                        <div className="absolute left-0 right-0 z-30 mt-1 rounded-xl border border-primary-border/30 bg-surface p-2 shadow-lg">
+                          <div className="relative">
+                            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-secondary" />
+                            <input
+                              className="w-full rounded-lg border border-primary-border/40 py-1.5 pl-8 pr-8 text-xs"
+                              placeholder="Search seller"
+                              value={bulkSellerSearch}
+                              onChange={(e) => setBulkSellerSearch(e.target.value)}
+                            />
+                            {bulkSellerSearch && (
+                              <button
+                                type="button"
+                                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-secondary hover:bg-primary-border/10"
+                                onClick={() => setBulkSellerSearch("")}
+                              >
+                                <X className="size-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-primary-border/30 p-1">
+                            {visibleBulkSellerOptions.length === 0 ? (
+                              <p className="px-2 py-1 text-xs text-secondary">No sellers found</p>
+                            ) : (
+                              visibleBulkSellerOptions.map((option) => (
+                                <button
+                                  key={option}
+                                  type="button"
+                                  className={`w-full rounded-md px-2 py-1 text-left text-xs hover:bg-primary-border/10 ${bulkValue === option ? "bg-primary-border/10 font-medium text-primary-text" : "text-primary-text"}`}
+                                  onClick={() => {
+                                    setBulkValue(option)
+                                    setBulkSellerMenuOpen(false)
+                                    setBulkSellerSearch("")
+                                  }}
+                                >
+                                  {option}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <input
                       type={bulkField === "deathDate" ? "date" : "text"}
@@ -1659,6 +1809,8 @@ const Inventory = () => {
           <CalfEditModal
             calf={selectedCalfInfo}
             loading={isSaving}
+            breedOptions={breedOptions}
+            sellerOptions={sellerOptions}
             onClose={() => setIsEditing(false)}
             onSave={saveEditedCalf}
             onDelete={isManageMode ? handleDeleteCalf : undefined}
