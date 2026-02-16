@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom"
 import { useToken } from "../api/useToken"
 import { getRanchById, updateRanch } from "../api/ranches"
 import { useAppContext } from "../context"
-import { DEFAULT_WEIGHT_CATEGORIES, createWeightCategory, normalizeWeightCategories } from "../utils/weightCategories"
+import { DEFAULT_WEIGHT_BRACKETS, createWeightBracket, normalizeWeightBrackets } from "../utils/weightBrackets"
 import { RanchPageSkeleton } from "../components/shared/loadingSkeletons"
 
 const Settings = () => {
@@ -11,13 +11,13 @@ const Settings = () => {
   const token = useToken()
   const { ranch, setRanch, setRanches, showSuccess, showError } = useAppContext()
   const [saving, setSaving] = useState(false)
-  const [categories, setCategories] = useState(DEFAULT_WEIGHT_CATEGORIES)
+  const [categories, setCategories] = useState(DEFAULT_WEIGHT_BRACKETS)
   const [selectedSetting, setSelectedSetting] = useState(null)
 
   useEffect(() => {
     if (!token || !id) return
     if (ranch?.id === Number(id)) {
-      setCategories(normalizeWeightCategories(ranch?.weightCategories))
+      setCategories(normalizeWeightBrackets(ranch?.weightCategories))
       return
     }
 
@@ -25,7 +25,7 @@ const Settings = () => {
       try {
         const data = await getRanchById(id, token)
         setRanch(data)
-        setCategories(normalizeWeightCategories(data?.weightCategories))
+        setCategories(normalizeWeightBrackets(data?.weightCategories))
       } catch (error) {
         console.error("Error loading ranch settings:", error)
       }
@@ -35,8 +35,8 @@ const Settings = () => {
   }, [id, token, ranch?.id, ranch?.weightCategories, setRanch])
 
   const hasChanges = useMemo(() => {
-    const baseline = JSON.stringify(normalizeWeightCategories(ranch?.weightCategories))
-    const current = JSON.stringify(normalizeWeightCategories(categories))
+    const baseline = JSON.stringify(normalizeWeightBrackets(ranch?.weightCategories))
+    const current = JSON.stringify(normalizeWeightBrackets(categories))
     return baseline !== current
   }, [ranch?.weightCategories, categories])
 
@@ -47,10 +47,10 @@ const Settings = () => {
         : item
     )))
   }
-  const addCategory = () => {
-    setCategories((prev) => [...prev, createWeightCategory(prev.length)])
+  const addBracket = () => {
+    setCategories((prev) => [...prev, createWeightBracket(prev.length)])
   }
-  const removeCategory = (index) => {
+  const removeBracket = (index) => {
     setCategories((prev) => prev.filter((_, idx) => idx !== index))
   }
 
@@ -58,7 +58,7 @@ const Settings = () => {
     if (!token || !ranch?.id || saving) return
     try {
       setSaving(true)
-      const payload = { weightCategories: normalizeWeightCategories(categories) }
+      const payload = { weightCategories: normalizeWeightBrackets(categories) }
       const updated = await updateRanch(ranch.id, payload, token)
 
       setRanch((prev) => ({ ...(prev || {}), ...updated }))
@@ -66,7 +66,7 @@ const Settings = () => {
         ? prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item))
         : prev
       )
-      showSuccess("Weight categories updated successfully.", "Saved")
+      showSuccess("Weight brackets updated successfully.", "Saved")
     } catch (error) {
       console.error("Error saving ranch settings:", error)
       showError(error?.response?.data?.message || "Could not save ranch settings.")
@@ -79,12 +79,12 @@ const Settings = () => {
 
   const settingOptions = [
     {
-      key: "weight-categories",
-      title: "Weight Categories",
+      key: "weight-brackets",
+      title: "Weight Brackets",
       description: "Set the bracket ranges and labels used in this ranch.",
     },
   ]
-  const breadcrumbCurrent = selectedSetting === "weight-categories" ? "Weight Categories" : ""
+  const breadcrumbCurrent = selectedSetting === "weight-brackets" ? "Weight Brackets" : ""
 
   return (
     <div className="w-full p-4 md:p-6 space-y-5">
@@ -133,35 +133,35 @@ const Settings = () => {
         </div>
       )}
 
-      {selectedSetting === "weight-categories" && (
+      {selectedSetting === "weight-brackets" && (
         <div className="rounded-2xl border border-primary-border/30 bg-white p-5 shadow-sm space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-base font-semibold text-primary-text">Weight Categories</h3>
-              <p className="text-xs text-secondary">Configure weight range and description by category.</p>
+              <h3 className="text-base font-semibold text-primary-text">Weight Brackets</h3>
+              <p className="text-xs text-secondary">Configure weight range and description by bracket.</p>
             </div>
             <button
               type="button"
-              onClick={addCategory}
+              onClick={addBracket}
               className="rounded-lg border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
             >
-              Add Category
+              Add Bracket
             </button>
           </div>
 
           {categories.length === 0 && (
             <div className="rounded-xl border border-dashed border-primary-border/40 p-4 text-sm text-secondary">
-              No categories yet. Click <span className="font-semibold text-primary-text">Add Category</span> to create one.
+              No brackets yet. Click <span className="font-semibold text-primary-text">Add Bracket</span> to create one.
             </div>
           )}
 
           {categories.map((category, index) => (
-            <div key={category.key || `category-${index}`} className="rounded-xl border border-primary-border/20 p-4 space-y-3">
+            <div key={category.key || `bracket-${index}`} className="rounded-xl border border-primary-border/20 p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-semibold text-secondary uppercase tracking-wide">Category {index + 1}</p>
+                <p className="text-xs font-semibold text-secondary uppercase tracking-wide">Bracket {index + 1}</p>
                 <button
                   type="button"
-                  onClick={() => removeCategory(index)}
+                  onClick={() => removeBracket(index)}
                   className="rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
                 >
                   Remove

@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react"
-import { X } from "lucide-react"
+import { Check, ChevronsUpDown, X } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@components/ui/command"
+import { US_STATES } from "../../constants/usStates"
 
 const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
   const [formData, setFormData] = useState({
@@ -11,6 +14,9 @@ const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
     manager: "",
   })
   const [errors, setErrors] = useState({})
+  const [stateMenuOpen, setStateMenuOpen] = useState(false)
+  const normalizedStateInput = formData.state.trim().toLowerCase()
+  const selectedUsState = US_STATES.find((item) => item.toLowerCase() === normalizedStateInput) || ""
 
   useEffect(() => {
     if (!ranch) return
@@ -40,7 +46,11 @@ const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
     if (!formData.name.trim()) nextErrors.name = "Name is required"
     if (!formData.address.trim()) nextErrors.address = "Address is required"
     if (!formData.city.trim()) nextErrors.city = "City is required"
-    if (!formData.state.trim()) nextErrors.state = "State is required"
+    if (!formData.state.trim()) {
+      nextErrors.state = "State is required"
+    } else if (!selectedUsState) {
+      nextErrors.state = "Select a valid U.S. state"
+    }
     if (!formData.manager.trim()) nextErrors.manager = "Manager is required"
 
     setErrors(nextErrors)
@@ -55,7 +65,7 @@ const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
       address: formData.address.trim(),
       city: formData.city.trim(),
       zipCode: formData.zipCode.trim(),
-      state: formData.state.trim(),
+      state: selectedUsState,
       manager: formData.manager.trim(),
     })
   }
@@ -121,12 +131,46 @@ const EditRanchModal = ({ ranch, onClose, onSave, loading = false }) => {
 
               <div>
                 <label className="block text-sm font-semibold text-primary-text mb-1">State <span className="text-red-600">*</span></label>
-                <input
-                  type="text"
-                  value={formData.state}
-                  onChange={(e) => handleChange("state", e.target.value)}
-                  className="w-full rounded-md border border-primary-border/40 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-border"
-                />
+                <Popover open={stateMenuOpen} onOpenChange={setStateMenuOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      role="combobox"
+                      aria-expanded={stateMenuOpen}
+                      className="w-full rounded-md border border-primary-border/40 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-border flex items-center justify-between"
+                    >
+                      <span className={selectedUsState ? "text-primary-text" : "text-secondary"}>
+                        {selectedUsState || "Select state"}
+                      </span>
+                      <ChevronsUpDown className="h-4 w-4 text-secondary opacity-80" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="p-0 w-[var(--radix-popover-trigger-width)] z-[80]" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search state..." />
+                      <CommandList>
+                        <CommandEmpty>No states found.</CommandEmpty>
+                        <CommandGroup>
+                          {US_STATES.map((stateName) => (
+                            <CommandItem
+                              key={stateName}
+                              value={stateName}
+                              onSelect={() => {
+                                handleChange("state", stateName)
+                                setStateMenuOpen(false)
+                              }}
+                            >
+                              <Check
+                                className={`mr-2 h-4 w-4 ${selectedUsState === stateName ? "opacity-100" : "opacity-0"}`}
+                              />
+                              {stateName}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 {errors.state && <p className="text-xs text-red-500 mt-1">{errors.state}</p>}
               </div>
             </div>

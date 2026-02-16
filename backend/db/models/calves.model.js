@@ -4,6 +4,35 @@ const { RANCHES_TABLE } = require('./ranches')
 
 const CALVES_TABLE = 'calves' 
 
+const parseDateToLocalDayStart = (value) => {
+  if (!value) return null
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null
+    return new Date(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate())
+  }
+
+  const raw = String(value).trim()
+  const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (dateOnlyMatch) {
+    const year = Number(dateOnlyMatch[1])
+    const month = Number(dateOnlyMatch[2]) - 1
+    const day = Number(dateOnlyMatch[3])
+    const localDate = new Date(year, month, day)
+    if (
+      localDate.getFullYear() === year &&
+      localDate.getMonth() === month &&
+      localDate.getDate() === day
+    ) {
+      return localDate
+    }
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
+}
+
 const CalvesSchema = {
 
   id: {
@@ -196,13 +225,12 @@ const CalvesSchema = {
       const pre = Number.isFinite(rawPre) ? Math.max(0, rawPre) : 0
       if (!startValue) return pre
 
-      const start = new Date(startValue)
-      if (Number.isNaN(start.getTime())) return pre
+      const start = parseDateToLocalDayStart(startValue)
+      if (!start) return pre
 
       const now = new Date()
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      const placedDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
-      const diff = Math.floor((today.getTime() - placedDay.getTime()) / (1000 * 60 * 60 * 24))
+      const diff = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
       const elapsed = Math.max(0, diff) + 1
       return elapsed + pre
     }

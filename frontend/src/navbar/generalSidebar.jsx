@@ -1,6 +1,6 @@
 import { useAuth0 } from "@auth0/auth0-react"
 import { NavLink } from "react-router-dom"
-import { FileText, LayoutDashboard, ReceiptText, Settings, Tags, Tag, Container } from "lucide-react"
+import { FileText, LayoutDashboard, ReceiptText, Settings, Tags, Tag, Container, SlidersHorizontal } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -63,6 +63,14 @@ export function GeneralSidebar() {
                   <NavLink to="/sellers">
                     <Container />
                     <span>Sellers</span>
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <NavLink to="/weight-brackets">
+                    <SlidersHorizontal />
+                    <span>Weight Brackets</span>
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>

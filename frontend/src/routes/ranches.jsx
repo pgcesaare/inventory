@@ -306,21 +306,7 @@ const Ranches = () => {
           {/* Right side: Sort + Create */}
           <div className='flex flex-wrap items-center gap-3'>
 
-            <div className='flex items-center gap-2 rounded-xl border border-primary-border/50 dark:border-primary-border/80 bg-white dark:bg-surface/90 px-3 py-2.5'>
-              <ArrowUpDown className="h-4 w-4 text-secondary opacity-70" />
-              <select
-                value={sortBy}
-                onChange={(e) => {
-                  const nextValue = e.target.value
-                  setSortBy(nextValue)
-                  setSortDirection(nextValue === "cattle" ? "desc" : "asc")
-                }}
-                className='bg-transparent text-sm focus:outline-none'
-              >
-                <option value="name">Name</option>
-                <option value="cattle">Cattle</option>
-              </select>
-            </div>
+            <CreateButton text="Create Ranch" onClick={handleCreate} />
 
           </div>
         </div>

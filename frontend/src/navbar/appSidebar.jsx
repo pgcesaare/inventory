@@ -4,7 +4,7 @@ import { useToken } from '../api/useToken'
 import { useAppContext } from '../context'
 import { RanchSwitcher } from './components/ranchSwitcher'
 import { NavLink, useLocation, useParams } from 'react-router-dom'
-import { ChevronDown, Container, FileClock, FileText, LayoutDashboard, PencilLine, ReceiptText, Settings, Sheet, Tag, Tags, Truck } from 'lucide-react'
+import { ChevronDown, Container, FileClock, FileText, LayoutDashboard, PencilLine, ReceiptText, Settings, Sheet, Tag, Truck } from 'lucide-react'
 
 import {
   Sidebar,
@@ -78,7 +78,6 @@ export function AppSidebar() {
     }, [isCalvesRoute])
 
     const hasSelectedRanch = Boolean(ranch?.id)
-    const canOpenSettings = hasSelectedRanch
 
     if(loading) return null
 
@@ -194,19 +193,12 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                {canOpenSettings ? (
-                  <SidebarMenuButton asChild>
-                    <NavLink to={`/ranches/${ranch.id}/settings`}>
-                      <Settings />
-                      <span>Ranch Settings</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                ) : (
-                  <SidebarMenuButton disabled className="opacity-50 cursor-not-allowed">
+                <SidebarMenuButton asChild>
+                  <NavLink to="/settings">
                     <Settings />
-                    <span>Ranch Settings</span>
-                  </SidebarMenuButton>
-                )}
+                    <span>Settings</span>
+                  </NavLink>
+                </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>

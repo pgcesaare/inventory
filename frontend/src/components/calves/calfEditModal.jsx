@@ -2,6 +2,35 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { ChevronDown, Search, X } from "lucide-react"
 import StyledDateInput from "../shared/styledDateInput"
 
+const parseDateToLocalDayStart = (value) => {
+  if (!value) return null
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null
+    return new Date(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate())
+  }
+
+  const raw = String(value).trim()
+  const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (dateOnlyMatch) {
+    const year = Number(dateOnlyMatch[1])
+    const month = Number(dateOnlyMatch[2]) - 1
+    const day = Number(dateOnlyMatch[3])
+    const localDate = new Date(year, month, day)
+    if (
+      localDate.getFullYear() === year &&
+      localDate.getMonth() === month &&
+      localDate.getDate() === day
+    ) {
+      return localDate
+    }
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
+}
+
 const formatDateInput = (value) => {
   if (!value) return ""
   const date = new Date(value)
@@ -9,20 +38,25 @@ const formatDateInput = (value) => {
   return date.toISOString().slice(0, 10)
 }
 
+const capitalizeFirst = (value) => {
+  const raw = String(value || "").trim()
+  if (!raw) return ""
+  return raw.charAt(0).toUpperCase() + raw.slice(1)
+}
+
 const calculateDaysOnFeed = (calf) => {
   if (!calf) return "-"
 
   const startValue = calf.dateIn || calf.placedDate
-  const start = startValue ? new Date(startValue) : null
+  const start = parseDateToLocalDayStart(startValue)
   const rawPre = Number(calf.preDaysOnFeed || 0)
   const preDays = Number.isFinite(rawPre) ? Math.max(0, rawPre) : 0
 
-  if (!start || Number.isNaN(start.getTime())) return preDays
+  if (!start) return preDays
 
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const placedDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
-  const diff = Math.floor((today.getTime() - placedDay.getTime()) / (1000 * 60 * 60 * 24))
+  const diff = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
   const elapsed = Math.max(0, diff) + 1
   return elapsed + preDays
 }
@@ -140,7 +174,7 @@ const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false, breed
                 onClick={() => setBreedMenuOpen((prev) => !prev)}
               >
                 <span className={form.breed ? "text-primary-text" : "text-secondary"}>
-                  {form.breed || "Select breed"}
+                  {form.breed ? capitalizeFirst(form.breed) : "Select breed"}
                 </span>
                 <ChevronDown className="h-4 w-4 text-secondary" />
               </button>
@@ -183,7 +217,7 @@ const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false, breed
                             setBreedSearch("")
                           }}
                         >
-                          {option}
+                          {capitalizeFirst(option)}
                         </button>
                       ))
                     )}
@@ -192,7 +226,7 @@ const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false, breed
               )}
             </div>
           </div>
-          <div><label className="text-xs font-semibold text-secondary">Sex</label><input className={fieldClass} value={form.sex} onChange={(e) => setField("sex", e.target.value)} /></div>
+          <div><label className="text-xs font-semibold text-secondary">Sex</label><input className={`${fieldClass} capitalize`} value={form.sex} onChange={(e) => setField("sex", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Weight</label><input className={fieldClass} value={form.weight} onChange={(e) => setField("weight", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Purchase Price</label><input className={fieldClass} value={form.purchasePrice} onChange={(e) => setField("purchasePrice", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Sell Price</label><input className={fieldClass} value={form.sellPrice} onChange={(e) => setField("sellPrice", e.target.value)} /></div>
@@ -205,7 +239,7 @@ const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false, breed
                 onClick={() => setSellerMenuOpen((prev) => !prev)}
               >
                 <span className={form.seller ? "text-primary-text" : "text-secondary"}>
-                  {form.seller || "Select seller"}
+                  {form.seller ? capitalizeFirst(form.seller) : "Select seller"}
                 </span>
                 <ChevronDown className="h-4 w-4 text-secondary" />
               </button>
@@ -248,7 +282,7 @@ const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false, breed
                             setSellerSearch("")
                           }}
                         >
-                          {option}
+                          {capitalizeFirst(option)}
                         </button>
                       ))
                     )}
@@ -258,9 +292,9 @@ const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false, breed
             </div>
           </div>
           <div><label className="text-xs font-semibold text-secondary">Dairy</label><input className={fieldClass} value={form.dairy} onChange={(e) => setField("dairy", e.target.value)} /></div>
-          <div><label className="text-xs font-semibold text-secondary">Status</label><input className={fieldClass} value={form.status} onChange={(e) => setField("status", e.target.value)} /></div>
+          <div><label className="text-xs font-semibold text-secondary">Status</label><input className={`${fieldClass} capitalize`} value={form.status} onChange={(e) => setField("status", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Protein Level</label><input className={fieldClass} value={form.proteinLevel} onChange={(e) => setField("proteinLevel", e.target.value)} /></div>
-          <div><label className="text-xs font-semibold text-secondary">Protein Test</label><input className={fieldClass} value={form.proteinTest} onChange={(e) => setField("proteinTest", e.target.value)} /></div>
+          <div><label className="text-xs font-semibold text-secondary">Protein Test</label><input className={`${fieldClass} capitalize`} value={form.proteinTest} onChange={(e) => setField("proteinTest", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Death Date</label><StyledDateInput inputClassName={fieldClass} value={form.deathDate} onChange={(e) => setField("deathDate", e.target.value)} ariaLabel="Open death date picker" /></div>
           <div><label className="text-xs font-semibold text-secondary">Shipped Out Date</label><StyledDateInput inputClassName={fieldClass} value={form.shippedOutDate} onChange={(e) => setField("shippedOutDate", e.target.value)} ariaLabel="Open shipped out date picker" /></div>
           <div><label className="text-xs font-semibold text-secondary">Shipped To</label><input className={fieldClass} value={form.shippedTo} onChange={(e) => setField("shippedTo", e.target.value)} /></div>

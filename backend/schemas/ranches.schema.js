@@ -15,6 +15,7 @@ const weightCategoryEntry = Joi.object({
   max: Joi.number().allow(null),
   label: Joi.string().allow(null, ""),
   description: Joi.string().allow(null, ""),
+  breeds: Joi.array().items(Joi.string().trim().allow("")).allow(null),
 })
 const weightCategories = Joi.array().items(weightCategoryEntry).allow(null)
 

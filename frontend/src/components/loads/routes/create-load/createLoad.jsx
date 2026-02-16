@@ -30,6 +30,34 @@ const getSearchPlaceholder = (mode, field) => {
 }
 const RequiredMark = () => <span className="ml-0.5 text-red-600">*</span>
 const toTitleCase = (value) => String(value || "").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
+const parseDateToLocalDayStart = (value) => {
+  if (!value) return null
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null
+    return new Date(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate())
+  }
+
+  const raw = String(value).trim()
+  const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (dateOnlyMatch) {
+    const year = Number(dateOnlyMatch[1])
+    const month = Number(dateOnlyMatch[2]) - 1
+    const day = Number(dateOnlyMatch[3])
+    const localDate = new Date(year, month, day)
+    if (
+      localDate.getFullYear() === year &&
+      localDate.getMonth() === month &&
+      localDate.getDate() === day
+    ) {
+      return localDate
+    }
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
+}
 
 const CreateLoad = ({ onCreated }) => {
   const { id } = useParams()
@@ -146,17 +174,16 @@ const CreateLoad = ({ onCreated }) => {
   }, [inventoryCalves, searchMode, searchMatchMode, searchField, tagSearch, tagListSearch, breedFilter, sellerFilter, calfDateFrom, calfDateTo])
   const calculateDaysOnFeed = (calf) => {
     const intakeRaw = calf.dateIn || calf.placedDate
-    const intakeDate = intakeRaw ? new Date(intakeRaw) : null
+    const intakeStart = parseDateToLocalDayStart(intakeRaw)
     const preDaysRaw = Number(calf.preDaysOnFeed)
     const preDays = Number.isFinite(preDaysRaw) ? preDaysRaw : 0
 
-    if (!intakeDate || Number.isNaN(intakeDate.getTime())) {
+    if (!intakeStart) {
       return preDays > 0 ? preDays : 0
     }
 
     const today = new Date()
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-    const intakeStart = new Date(intakeDate.getFullYear(), intakeDate.getMonth(), intakeDate.getDate())
     const msDiff = todayStart.getTime() - intakeStart.getTime()
     const intakeDays = Math.floor(msDiff / (1000 * 60 * 60 * 24)) + 1
     const safeIntakeDays = Math.max(intakeDays, 1)

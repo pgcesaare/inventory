@@ -2,7 +2,7 @@ const { Model, DataTypes } = require('sequelize')
 
 const { RANCHES_TABLE } = require('./ranches')
 
-const RANCH_WEIGHT_CATEGORIES_TABLE = 'ranch_weight_categories'
+const RANCH_WEIGHT_CATEGORIES_TABLE = 'weight_brackets'
 
 const RanchWeightCategoriesSchema = {
   id: {
@@ -44,6 +44,11 @@ const RanchWeightCategoriesSchema = {
   description: {
     allowNull: true,
     type: DataTypes.STRING,
+  },
+  breeds: {
+    allowNull: false,
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    defaultValue: [],
   },
   orderIndex: {
     allowNull: false,

@@ -24,8 +24,13 @@ const MainDataTable = ({
   bodyCellClassName = "",
   clipHorizontalOverflow = false,
   disableHorizontalScroll = false,
+  defaultSortKey = "",
+  defaultSortDirection = "asc",
 }) => {
-  const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" })
+  const [sortConfig, setSortConfig] = useState({
+    key: defaultSortKey,
+    direction: defaultSortDirection === "desc" ? "desc" : "asc",
+  })
   const [currentPage, setCurrentPage] = useState(1)
 
   const toggleSort = (key) => {

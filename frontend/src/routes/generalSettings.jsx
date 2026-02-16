@@ -47,4 +47,3 @@ const GeneralSettings = () => {
 }
 
 export default GeneralSettings
-

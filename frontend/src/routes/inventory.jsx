@@ -16,7 +16,36 @@ import SearchOptionsMenu from "../components/shared/searchOptionsMenu"
 import CalfDetailPanel from "../components/calves/calfDetailPanel"
 import CalfEditModal from "../components/calves/calfEditModal"
 import { RanchPageSkeleton } from "../components/shared/loadingSkeletons"
-import { getWeightCategoryLabel, normalizeWeightCategories } from "../utils/weightCategories"
+import { getWeightBracketLabel, normalizeWeightBrackets } from "../utils/weightBrackets"
+
+const parseDateToLocalDayStart = (value) => {
+  if (!value) return null
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null
+    return new Date(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate())
+  }
+
+  const raw = String(value).trim()
+  const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (dateOnlyMatch) {
+    const year = Number(dateOnlyMatch[1])
+    const month = Number(dateOnlyMatch[2]) - 1
+    const day = Number(dateOnlyMatch[3])
+    const localDate = new Date(year, month, day)
+    if (
+      localDate.getFullYear() === year &&
+      localDate.getMonth() === month &&
+      localDate.getDate() === day
+    ) {
+      return localDate
+    }
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
+}
 
 const Inventory = () => {
 
@@ -71,7 +100,7 @@ const Inventory = () => {
     const [mainSearchField, setMainSearchField] = useState("all")
     const [mainBreed, setMainBreed] = useState([])
     const [mainSeller, setMainSeller] = useState([])
-    const [mainWeightCategory, setMainWeightCategory] = useState("")
+    const [mainWeightBracket, setMainWeightBracket] = useState("")
     const [mainDateFrom, setMainDateFrom] = useState("")
     const [mainDateTo, setMainDateTo] = useState("")
     const [mainRowLimit, setMainRowLimit] = useState(15)
@@ -156,7 +185,7 @@ const Inventory = () => {
       { key: "purchasePrice", label: "Purchase Price" },
       { key: "daysOnFeed", label: "Days On Feed", align: "right" },
       { key: "weight", label: "Weight" },
-      { key: "weightCategory", label: "Bracket" }
+      { key: "weightBracket", label: "Bracket" }
     ]
 
     const formatDateCell = (value) => {
@@ -176,17 +205,16 @@ const Inventory = () => {
 
     const calculateDaysOnFeed = (calf) => {
       const intakeRaw = calf.dateIn || calf.placedDate
-      const intakeDate = intakeRaw ? new Date(intakeRaw) : null
+      const intakeStart = parseDateToLocalDayStart(intakeRaw)
       const preDaysRaw = Number(calf.preDaysOnFeed)
       const preDays = Number.isFinite(preDaysRaw) ? preDaysRaw : 0
 
-      if (!intakeDate || Number.isNaN(intakeDate.getTime())) {
+      if (!intakeStart) {
         return preDays > 0 ? preDays : "-"
       }
 
       const today = new Date()
       const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-      const intakeStart = new Date(intakeDate.getFullYear(), intakeDate.getMonth(), intakeDate.getDate())
       const msDiff = todayStart.getTime() - intakeStart.getTime()
       const intakeDays = Math.floor(msDiff / (1000 * 60 * 60 * 24)) + 1
       const safeIntakeDays = Math.max(intakeDays, 1)
@@ -211,13 +239,13 @@ const Inventory = () => {
       () => sellerOptions.filter((option) => String(option).toLowerCase().includes(bulkSellerSearch.toLowerCase())),
       [sellerOptions, bulkSellerSearch]
     )
-    const effectiveWeightCategories = useMemo(
-      () => normalizeWeightCategories(ranch?.weightCategories),
+    const effectiveWeightBrackets = useMemo(
+      () => normalizeWeightBrackets(ranch?.weightCategories),
       [ranch?.weightCategories]
     )
-    const weightCategoryOptions = useMemo(
-      () => effectiveWeightCategories.map((category) => category.label).filter(Boolean),
-      [effectiveWeightCategories]
+    const weightBracketOptions = useMemo(
+      () => effectiveWeightBrackets.map((category) => category.label).filter(Boolean),
+      [effectiveWeightBrackets]
     )
 
     const normalizeSearchValue = useCallback(
@@ -273,16 +301,16 @@ const Inventory = () => {
             : matchesSearchValue(searchValue)
         const breedFilterValues = asArray(filters.breed)
         const sellerFilterValues = asArray(filters.seller)
-        const weightCategoryFilter = String(filters.weightCategory || "")
+        const weightBracketFilter = String(filters.weightBracket || "")
         const breedMatch = breedFilterValues.length === 0 || breedFilterValues.includes(calf.breed)
         const sellerMatch = sellerFilterValues.length === 0 || sellerFilterValues.includes(calf.seller)
-        const weightCategory = getWeightCategoryLabel(calf.weight, filters.weightCategories)
-        const weightCategoryMatch = !weightCategoryFilter || weightCategory === weightCategoryFilter
+        const weightBracket = getWeightBracketLabel(calf.weight, filters.weightBrackets, calf.breed)
+        const weightBracketMatch = !weightBracketFilter || weightBracket === weightBracketFilter
 
         const rawDate = calf.dateIn || calf.placedDate
         const dateRangeMatch = isDateInDateRange(rawDate, filters.dateFrom, filters.dateTo)
 
-        return searchMatch && breedMatch && sellerMatch && weightCategoryMatch && dateRangeMatch
+        return searchMatch && breedMatch && sellerMatch && weightBracketMatch && dateRangeMatch
       })
     }, [normalizeSearchValue])
 
@@ -331,12 +359,12 @@ const Inventory = () => {
         searchField: mainSearchField,
         breed: mainBreed,
         seller: mainSeller,
-        weightCategory: mainWeightCategory,
-        weightCategories: effectiveWeightCategories,
+        weightBracket: mainWeightBracket,
+        weightBrackets: effectiveWeightBrackets,
         dateFrom: mainDateFrom,
         dateTo: mainDateTo,
       }),
-      [applyCalfFilters, calves, mainSearch, mainSearchMode, mainSearchMatch, mainSearchField, mainBreed, mainSeller, mainWeightCategory, effectiveWeightCategories, mainDateFrom, mainDateTo]
+      [applyCalfFilters, calves, mainSearch, mainSearchMode, mainSearchMatch, mainSearchField, mainBreed, mainSeller, mainWeightBracket, effectiveWeightBrackets, mainDateFrom, mainDateTo]
     )
     const filteredBreedCalves = useMemo(
       () => applyCalfFilters(calves, { search: "", breed: breedFilterSeller, seller: [], dateFrom: breedDateFrom, dateTo: breedDateTo }),
@@ -356,7 +384,7 @@ const Inventory = () => {
         backTag: calf.backTag || calf.originalID || "-",
         dateIn: formatDateCell(calf.dateIn || calf.placedDate),
         daysOnFeed: calculateDaysOnFeed(calf),
-        weightCategory: getWeightCategoryLabel(calf.weight, effectiveWeightCategories),
+        weightBracket: getWeightBracketLabel(calf.weight, effectiveWeightBrackets, calf.breed),
         weight: calf.weight ?? "-",
         breed: calf.breed
           ? calf.breed.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
@@ -366,7 +394,7 @@ const Inventory = () => {
           : "-",
         purchasePrice: formatMoneyCell(calf.purchasePrice ?? calf.price)
       }))
-    ), [filteredMainCalves, effectiveWeightCategories])
+    ), [filteredMainCalves, effectiveWeightBrackets])
 
     const breedSummaryRows = useMemo(() => {
       const accumulator = new Map()
@@ -601,7 +629,7 @@ const Inventory = () => {
           : selectedCalf?.sex || "-"
       },
       { label: "Weight", value: selectedCalfInfo.weight ?? "-" },
-      { label: "Weight Category", value: getWeightCategoryLabel(selectedCalfInfo.weight, effectiveWeightCategories) },
+      { label: "Weight Bracket", value: getWeightBracketLabel(selectedCalfInfo.weight, effectiveWeightBrackets, selectedCalfInfo.breed) },
       {
         label: "Purchase Price",
         value: selectedCalfInfo.purchasePrice || selectedCalfInfo.price
@@ -691,8 +719,8 @@ const Inventory = () => {
         searchField: mainSearchField,
         breed: mainBreed,
         seller: mainSeller,
-        weightCategory: mainWeightCategory,
-        weightCategories: effectiveWeightCategories,
+        weightBracket: mainWeightBracket,
+        weightBrackets: effectiveWeightBrackets,
         dateFrom: mainDateFrom,
         dateTo: mainDateTo,
       })
@@ -702,7 +730,7 @@ const Inventory = () => {
         EID: calf.EID || calf.eid || "",
         "Back Tag": calf.backTag || calf.originalID || "",
         "Date In": formatDateForExport(calf.dateIn || calf.placedDate),
-        "Weight Category": getWeightCategoryLabel(calf.weight, effectiveWeightCategories),
+        "Weight Bracket": getWeightBracketLabel(calf.weight, effectiveWeightBrackets, calf.breed),
         Breed: calf.breed || "",
         Sex: calf.sex || "",
         Weight: calf.weight ?? "",
@@ -1520,6 +1548,8 @@ const Inventory = () => {
               rows={tableRows}
               enablePagination
               pageSize={mainRowLimit}
+              defaultSortKey="visualTag"
+              defaultSortDirection="asc"
               columns={tableColumns}
               onRowClick={handleRowClick}
               selectedRowKey={selectedCalf?.id}
@@ -1572,15 +1602,15 @@ const Inventory = () => {
                       className="w-full"
                       breed={mainBreed}
                       seller={mainSeller}
-                      weightCategory={mainWeightCategory}
+                      weightBracket={mainWeightBracket}
                       breedOptions={breedOptions}
                       sellerOptions={sellerOptions}
-                      weightCategoryOptions={weightCategoryOptions}
-                      showWeightCategory
-                      onChange={({ breed, seller, weightCategory }) => {
+                      weightBracketOptions={weightBracketOptions}
+                      showWeightBracket
+                      onChange={({ breed, seller, weightBracket }) => {
                         setMainBreed(Array.isArray(breed) ? breed : (breed ? [breed] : []))
                         setMainSeller(Array.isArray(seller) ? seller : (seller ? [seller] : []))
-                        setMainWeightCategory(weightCategory || "")
+                        setMainWeightBracket(weightBracket || "")
                       }}
                     />
                     <DateFilterMenu
@@ -1626,7 +1656,7 @@ const Inventory = () => {
                         setMainSearchField("all")
                         setMainBreed([])
                         setMainSeller([])
-                        setMainWeightCategory("")
+                        setMainWeightBracket("")
                         setMainDateFrom("")
                         setMainDateTo("")
                       }}

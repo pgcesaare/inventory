@@ -8,12 +8,22 @@ import { useToken } from "../../api/useToken"
 import { createRanch } from "../../api/ranches"
 import { useNavigate } from "react-router-dom"
 import { useAuth0 } from "@auth0/auth0-react"
+import { US_STATES } from "../../constants/usStates"
+import { Check, ChevronsUpDown } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@components/ui/command"
 
 const randomColor = () => {
   return `#${Math.floor(Math.random() * 0xffffff)
     .toString(16)
     .padStart(6, '0')}`
 }
+
+const RequiredLabel = ({ text }) => (
+  <>
+    {text} <span className="text-red-500">*</span>
+  </>
+)
 
 const CreateNewRanch = () => {
   const token = useToken()
@@ -37,6 +47,9 @@ const CreateNewRanch = () => {
 
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
+  const [stateMenuOpen, setStateMenuOpen] = useState(false)
+  const normalizedStateInput = formData.state.trim().toLowerCase()
+  const selectedUsState = US_STATES.find((item) => item.toLowerCase() === normalizedStateInput) || ""
 
   const handleChange = (name, value) => {
     setFormData(prev => ({ ...prev, [name]: value }))
@@ -59,8 +72,11 @@ const CreateNewRanch = () => {
     if (!formData.city.trim())
       newErrors.city = "City is required"
 
-    if (!formData.state.trim())
+    if (!formData.state.trim()) {
       newErrors.state = "State is required"
+    } else if (!selectedUsState) {
+      newErrors.state = "Select a valid U.S. state"
+    }
 
     if (!formData.manager.trim())
       newErrors.manager = "Manager is required"
@@ -79,6 +95,7 @@ const CreateNewRanch = () => {
 
       let newRanch = {
         ...formData,
+        state: selectedUsState,
         color: randomColor(),
         createdBy: createdByName,
         weightCategories: [],
@@ -123,7 +140,7 @@ const CreateNewRanch = () => {
               <div>
                 <Input
                   type="text"
-                  label="Name *"
+                  label={<RequiredLabel text="Name" />}
                   name="name"
                   placeholder="Enter ranch name"
                   onChange={(value) => handleChange("name", value)}
@@ -138,7 +155,7 @@ const CreateNewRanch = () => {
               <div>
                 <Input
                   type="text"
-                  label="Address *"
+                  label={<RequiredLabel text="Address" />}
                   name="address"
                   placeholder="Enter ranch address"
                   onChange={(value) => handleChange("address", value)}
@@ -150,12 +167,12 @@ const CreateNewRanch = () => {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                 <div>
                   <Input
                     type="text"
-                    label="City *"
+                    label={<RequiredLabel text="City" />}
                     name="city"
                     placeholder="Enter city"
                     onChange={(value) => handleChange("city", value)}
@@ -179,16 +196,75 @@ const CreateNewRanch = () => {
 
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                 <div>
-                  <Input
-                    type="text"
-                    label="State *"
-                    name="state"
-                    placeholder="Enter state"
-                    onChange={(value) => handleChange("state", value)}
-                  />
+                  <label
+                    htmlFor="state"
+                    className="font-semibold text-sm text-gray-700"
+                  >
+                    State <span className="text-red-500">*</span>
+                  </label>
+                  <div className="mt-2">
+                    <Popover open={stateMenuOpen} onOpenChange={setStateMenuOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          id="state"
+                          type="button"
+                          role="combobox"
+                          aria-expanded={stateMenuOpen}
+                          className="
+                            border border-gray-300
+                            rounded-md
+                            px-3
+                            h-9
+                            text-sm
+                            w-full
+                            flex items-center justify-between
+                            focus:outline-none
+                            focus:ring-2
+                            focus:ring-blue-500
+                            focus:border-blue-500
+                            transition-all
+                            duration-150
+                          "
+                        >
+                          <span className={selectedUsState ? "text-gray-900" : "text-gray-400"}>
+                            {selectedUsState || "Select state"}
+                          </span>
+                          <ChevronsUpDown className="h-4 w-4 text-gray-500 opacity-80" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="p-0 w-[var(--radix-popover-trigger-width)] z-[80]"
+                        align="start"
+                      >
+                        <Command>
+                          <CommandInput placeholder="Search state..." />
+                          <CommandList>
+                            <CommandEmpty>No states found.</CommandEmpty>
+                            <CommandGroup>
+                              {US_STATES.map((stateName) => (
+                                <CommandItem
+                                  key={stateName}
+                                  value={stateName}
+                                  onSelect={() => {
+                                    handleChange("state", stateName)
+                                    setStateMenuOpen(false)
+                                  }}
+                                >
+                                  <Check
+                                    className={`mr-2 h-4 w-4 ${selectedUsState === stateName ? "opacity-100" : "opacity-0"}`}
+                                  />
+                                  {stateName}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                   {errors.state && (
                     <p className="text-xs text-red-500 mt-1">
                       {errors.state}
@@ -201,7 +277,7 @@ const CreateNewRanch = () => {
               <div>
                 <Input
                   type="text"
-                  label="Manager *"
+                  label={<RequiredLabel text="Manager" />}
                   name="manager"
                   placeholder="Enter manager name"
                   onChange={(value) => handleChange("manager", value)}

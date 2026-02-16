@@ -7,6 +7,20 @@ const toNullableNumber = (value) => {
     return Number.isFinite(parsed) ? parsed : null
 }
 
+const normalizeBreedList = (value) => {
+    if (!Array.isArray(value)) return []
+
+    const unique = new Map()
+    value.forEach((item) => {
+        const normalized = String(item || '').trim()
+        if (!normalized) return
+        const key = normalized.toLowerCase()
+        if (!unique.has(key)) unique.set(key, normalized)
+    })
+
+    return Array.from(unique.values())
+}
+
 const normalizeWeightCategories = (categories) => {
     if (!Array.isArray(categories)) return []
 
@@ -16,6 +30,7 @@ const normalizeWeightCategories = (categories) => {
         maxWeight: toNullableNumber(item?.max),
         label: String(item?.label || `Category ${index + 1}`),
         description: item?.description === null || item?.description === undefined ? null : String(item.description),
+        breeds: normalizeBreedList(item?.breeds),
         orderIndex: index,
     }))
 }
@@ -28,6 +43,7 @@ const mapWeightCategoriesForApi = (rows) => rows
         max: row.maxWeight === null || row.maxWeight === undefined ? null : Number(row.maxWeight),
         label: row.label || '',
         description: row.description || '',
+        breeds: normalizeBreedList(row.breeds),
     }))
 
 
@@ -220,8 +236,8 @@ class RanchesService {
 
     async delete(id) {
         const ranchId = Number(id)
-        const ranch = await this.findOne(ranchId)
-        if (!ranch) {
+        const ranchModel = await model.Ranches.findByPk(ranchId)
+        if (!ranchModel) {
             throw new Error(`Ranch with id ${ranchId} not found`)
         }
 
@@ -257,7 +273,12 @@ class RanchesService {
                 transaction
             })
 
-            await ranch.destroy({ transaction })
+            await model.RanchWeightCategories.destroy({
+                where: { ranchID: ranchId },
+                transaction
+            })
+
+            await ranchModel.destroy({ transaction })
         })
 
         return { id: ranchId }

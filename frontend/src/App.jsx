@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { useRoutes, BrowserRouter, Navigate, useLocation } from "react-router-dom";
+import { useRoutes, BrowserRouter, Navigate, useLocation, useParams } from "react-router-dom";
 import Template from "./template/template";
 import Ranches from "./routes/ranches";
 import Historical from "./routes/historical";
@@ -10,8 +10,8 @@ import NavbarLayout from "./navbar/components/navbarLayout";
 import { useAppContext } from "./context";
 import CreateNewRanch from "./components/ranches/createRanch";
 import Loads from "./routes/load";
-import Settings from "./routes/settings";
 import GeneralSettings from "./routes/generalSettings";
+import WeightBracketsSettings from "./routes/weightBracketsSettings";
 import Statements from "./routes/statements";
 import Invoices from "./routes/invoices";
 import Prices from "./routes/prices";
@@ -34,6 +34,19 @@ const LegacyRanchRouteRedirect = () => {
     .replace("/ranches/ranch/", "/ranches/");
   return <Navigate to={`${migratedPath}${location.search}`} replace />;
 };
+
+const LegacyRanchSettingsRedirect = () => {
+  const { id } = useParams()
+  const target = id
+    ? `/weight-brackets?ranchId=${encodeURIComponent(id)}`
+    : "/weight-brackets"
+  return <Navigate to={target} replace />
+}
+
+const LegacyWeightBracketsRedirect = () => {
+  const location = useLocation()
+  return <Navigate to={`/weight-brackets${location.search}`} replace />
+}
 
 const AppRoutes = ({ isAuthenticated }) => {
   const ranchRouteGuard = !isAuthenticated
@@ -107,6 +120,20 @@ const AppRoutes = ({ isAuthenticated }) => {
       ),
     },
     {
+      path: "/weight-brackets",
+      element: (
+        ranchRouteGuard || <ProtectedTemplate
+          title="Weight brackets"
+          isAuthenticated={isAuthenticated}>
+          <WeightBracketsSettings />
+        </ProtectedTemplate>
+      ),
+    },
+    {
+      path: "/settings/weight-brackets",
+      element: <LegacyWeightBracketsRedirect />,
+    },
+    {
       path: "/statements",
       element: (
         ranchRouteGuard || <ProtectedTemplate
@@ -158,13 +185,7 @@ const AppRoutes = ({ isAuthenticated }) => {
     },
     {
       path: "/ranches/:id/settings",
-      element: (
-        ranchRouteGuard || <ProtectedTemplate
-          title="Ranch settings"
-          isAuthenticated={isAuthenticated}>
-          <Settings />
-        </ProtectedTemplate>
-      ),
+      element: <LegacyRanchSettingsRedirect />,
     },
     {
       path: "/ranches/:id/add-calves",
