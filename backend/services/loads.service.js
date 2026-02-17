@@ -1,8 +1,19 @@
 const { Op } = require('sequelize')
+const boom = require('@hapi/boom')
 const { sequelize, model } = require('../db/libs/sequelize')
 
 class LoadsService {
   constructor() {}
+
+  getLoadStatus(loadData = {}) {
+    const notesValue = String(loadData.notes || '').toLowerCase()
+    if (/(canceled|cancelled|cancel)/.test(notesValue)) return 'canceled'
+
+    const headCount = Number(loadData.load?.length ?? loadData.headCount ?? 0)
+    if (!Number.isFinite(headCount) || headCount <= 0) return 'draft'
+    if (loadData.arrivalDate) return 'arrived'
+    return 'in_transit'
+  }
 
   getAuditTimestamps(entity) {
     const data = entity?.toJSON ? entity.toJSON() : (entity || {})
@@ -40,6 +51,62 @@ class LoadsService {
     return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))]
   }
 
+  normalizeLoadCalfArrivalStatus(value) {
+    const normalized = String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_')
+    if (!normalized) return null
+    if (normalized === 'doa') return 'doa'
+    if (normalized === 'issue') return 'issue'
+    if (normalized === 'not_in_load') return 'not_in_load'
+    return null
+  }
+
+  parseDateToLocalDayStart(value) {
+    if (!value) return null
+
+    if (value instanceof Date) {
+      if (Number.isNaN(value.getTime())) return null
+      return new Date(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate())
+    }
+
+    const raw = String(value).trim()
+    const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (dateOnlyMatch) {
+      const year = Number(dateOnlyMatch[1])
+      const month = Number(dateOnlyMatch[2]) - 1
+      const day = Number(dateOnlyMatch[3])
+      const localDate = new Date(year, month, day)
+      if (
+        localDate.getFullYear() === year &&
+        localDate.getMonth() === month &&
+        localDate.getDate() === day
+      ) {
+        return localDate
+      }
+    }
+
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return null
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
+  }
+
+  calculateDaysOnFeedAtShipment(calf = {}, shipmentDateValue) {
+    const intakeRaw = calf.placedDate || calf.dateIn || null
+    const intakeStart = this.parseDateToLocalDayStart(intakeRaw)
+    const shipmentDay = this.parseDateToLocalDayStart(shipmentDateValue) || new Date()
+    const preDaysRaw = Number(calf.preDaysOnFeed || 0)
+    const preDays = Number.isFinite(preDaysRaw) ? Math.max(0, preDaysRaw) : 0
+
+    if (!intakeStart) return preDays
+
+    const elapsedDays = Math.floor((shipmentDay.getTime() - intakeStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    const safeElapsedDays = Math.max(elapsedDays, 1)
+
+    return safeElapsedDays + preDays
+  }
+
   async findAll() {
     return await model.Loads.findAll({ include: { all: true } })
   }
@@ -62,11 +129,13 @@ class LoadsService {
     const data = load.toJSON()
     const { createdAt, updatedAt } = this.getAuditTimestamps(load)
     const createdBy = this.getCreatedBy(load)
+    const status = this.getLoadStatus(data)
     return {
       ...data,
       createdAt,
       updatedAt,
       createdBy,
+      status,
       headCount: data.load?.length || 0,
       shippedOutDate: data.departureDate || null,
       shippedTo: data.destination?.name || data.destinationName || null,
@@ -88,6 +157,10 @@ class LoadsService {
         shippedTo: item.calf?.shippedTo || null,
         originRanchID: item.calf?.originRanchID ?? null,
         currentRanchID: item.calf?.currentRanchID ?? null,
+        daysOnFeedAtShipment: Number.isFinite(Number(item.daysOnFeedAtShipment))
+          ? Number(item.daysOnFeedAtShipment)
+          : null,
+        arrivalStatus: this.normalizeLoadCalfArrivalStatus(item.arrivalStatus),
         createdBy: item.calf?.createdBy || item.calf?.created_by || null
       }))
     }
@@ -135,6 +208,7 @@ class LoadsService {
         const destinationRanch = await model.Ranches.findByPk(destinationRanchID, { transaction: t })
         destinationLabel = destinationRanch?.name || destinationLabel
       }
+      const transferStatus = destinationRanchID ? 'feeding' : 'shipped'
 
       const updatedFields = {
         originRanchID,
@@ -151,9 +225,13 @@ class LoadsService {
       if (Object.prototype.hasOwnProperty.call(changes || {}, 'notes')) {
         updatedFields.notes = changes.notes || null
       }
+      if (Object.prototype.hasOwnProperty.call(changes || {}, 'afterArrivalNotes')) {
+        updatedFields.afterArrivalNotes = changes.afterArrivalNotes || null
+      }
       if (Object.prototype.hasOwnProperty.call(changes || {}, 'trucking')) {
         updatedFields.trucking = changes.trucking || null
       }
+      const effectiveDepartureDate = updatedFields.departureDate || currentData.departureDate || new Date()
 
       await load.update(updatedFields, { transaction: t })
 
@@ -228,10 +306,10 @@ class LoadsService {
             calfID,
             loadID: load.id,
             movementType: 'status_change',
-            eventDate: updatedFields.departureDate || currentData.departureDate || new Date(),
+            eventDate: effectiveDepartureDate,
             fromRanchID: destinationRanchID || null,
             toRanchID: originRanchID || null,
-            fromStatus: 'shipped',
+            fromStatus: transferStatus,
             toStatus: 'feeding',
             notes: `Removed from load #${load.id} during edit`
           })),
@@ -240,22 +318,24 @@ class LoadsService {
       }
 
       if (addedCalfIds.length > 0) {
-        await model.CalfLoads.bulkCreate(
-          addedCalfIds.map((calfID) => ({
-            calfID,
-            loadID: load.id
-          })),
-          { transaction: t }
-        )
-
         const calvesBeforeUpdate = await model.Calves.findAll({
           where: { id: { [Op.in]: addedCalfIds } },
           transaction: t
         })
 
+        await model.CalfLoads.bulkCreate(
+          calvesBeforeUpdate.map((calf) => ({
+            calfID: calf.id,
+            loadID: load.id,
+            daysOnFeedAtShipment: this.calculateDaysOnFeedAtShipment(calf, effectiveDepartureDate),
+            arrivalStatus: null
+          })),
+          { transaction: t }
+        )
+
         const addUpdatePayload = {
-          status: 'shipped',
-          shippedOutDate: updatedFields.departureDate || currentData.departureDate || null,
+          status: transferStatus,
+          shippedOutDate: effectiveDepartureDate || null,
           shippedTo: destinationLabel || null
         }
         if (destinationRanchID) {
@@ -275,11 +355,11 @@ class LoadsService {
             calfID: calf.id,
             loadID: load.id,
             movementType: 'load_transfer',
-            eventDate: updatedFields.departureDate || currentData.departureDate || new Date(),
+            eventDate: effectiveDepartureDate,
             fromRanchID: originRanchID || calf.currentRanchID || null,
             toRanchID: destinationRanchID || null,
             fromStatus: calf.status || 'feeding',
-            toStatus: 'shipped',
+            toStatus: transferStatus,
             notes: `Added to load #${load.id} during edit`
           })),
           { transaction: t }
@@ -288,8 +368,8 @@ class LoadsService {
 
       if (keptCalfIds.length > 0) {
         const keptUpdatePayload = {
-          status: 'shipped',
-          shippedOutDate: updatedFields.departureDate || currentData.departureDate || null,
+          status: transferStatus,
+          shippedOutDate: effectiveDepartureDate || null,
           shippedTo: destinationLabel || null
         }
         if (destinationRanchID) {
@@ -303,6 +383,25 @@ class LoadsService {
             transaction: t
           }
         )
+
+        const keptCalves = await model.Calves.findAll({
+          where: { id: { [Op.in]: keptCalfIds } },
+          transaction: t
+        })
+        await Promise.all(
+          keptCalves.map((calf) => (
+            model.CalfLoads.update(
+              { daysOnFeedAtShipment: this.calculateDaysOnFeedAtShipment(calf, effectiveDepartureDate) },
+              {
+                where: {
+                  loadID: load.id,
+                  calfID: calf.id
+                },
+                transaction: t
+              }
+            )
+          ))
+        )
       }
 
       await t.commit()
@@ -310,6 +409,112 @@ class LoadsService {
     } catch (error) {
       await t.rollback()
       console.error('❌ Update load transaction failed, rolled back:', error)
+      throw error
+    }
+  }
+
+  async updateCalfArrivalStatus(id, payload = {}) {
+    const t = await sequelize.transaction()
+
+    try {
+      const loadId = Number(id)
+      const calfID = Number(payload?.calfID)
+      const actingRanchID = Number(payload?.actingRanchID)
+      const hasArrivalStatusField = Object.prototype.hasOwnProperty.call(payload || {}, 'arrivalStatus')
+      const arrivalStatus = hasArrivalStatusField
+        ? this.normalizeLoadCalfArrivalStatus(payload.arrivalStatus)
+        : null
+
+      if (!Number.isFinite(loadId)) {
+        throw boom.badRequest('Valid load id is required')
+      }
+      if (!Number.isFinite(calfID)) {
+        throw boom.badRequest('Valid calf id is required')
+      }
+      if (!Number.isFinite(actingRanchID)) {
+        throw boom.badRequest('Valid acting ranch id is required')
+      }
+      if (hasArrivalStatusField && payload.arrivalStatus !== null && String(payload.arrivalStatus).trim() !== '' && !arrivalStatus) {
+        throw boom.badRequest('Invalid calf arrival status')
+      }
+
+      const load = await model.Loads.findByPk(loadId, { transaction: t })
+      if (!load) throw boom.notFound('Load not found')
+
+      const loadData = load.toJSON()
+      if (!loadData.arrivalDate) {
+        throw boom.badRequest('Calf arrival status can only be edited once the load is marked as arrived')
+      }
+
+      const originRanchID = Number(loadData.originRanchID)
+      const destinationRanchID = Number(loadData.destinationRanchID)
+      if (!Number.isFinite(destinationRanchID)) {
+        throw boom.badRequest('Calf arrival status is only available for ranch-to-ranch loads')
+      }
+
+      const canEditFromRanch = actingRanchID === originRanchID || actingRanchID === destinationRanchID
+      if (!canEditFromRanch) {
+        throw boom.forbidden('Only origin or destination ranch can edit calf arrival status')
+      }
+
+      const calfLoad = await model.CalfLoads.findOne({
+        where: {
+          loadID: loadId,
+          calfID,
+        },
+        transaction: t
+      })
+      if (!calfLoad) throw boom.notFound('Calf was not found in this load')
+
+      const calf = await model.Calves.findByPk(calfID, { transaction: t })
+      if (!calf) throw boom.notFound('Calf not found')
+
+      const normalizedArrivalStatus = arrivalStatus || null
+      const destinationLabel = String(loadData.destinationName || '').trim() || null
+      const departureDateValue = loadData.departureDate || null
+      const arrivalDateValue = loadData.arrivalDate || new Date()
+      const safeOriginRanchID = Number.isFinite(originRanchID) ? originRanchID : Number(calf.originRanchID)
+      const safeDestinationRanchID = Number.isFinite(destinationRanchID) ? destinationRanchID : Number(calf.currentRanchID)
+
+      if (!Number.isFinite(safeOriginRanchID)) {
+        throw boom.badRequest('Origin ranch is required to resolve calf arrival status')
+      }
+      if (!Number.isFinite(safeDestinationRanchID)) {
+        throw boom.badRequest('Destination ranch is required to resolve calf arrival status')
+      }
+
+      const nextCalfChanges = {}
+      if (normalizedArrivalStatus === 'doa') {
+        nextCalfChanges.currentRanchID = safeDestinationRanchID
+        nextCalfChanges.status = 'deceased'
+        nextCalfChanges.deathDate = arrivalDateValue
+        nextCalfChanges.shippedOutDate = departureDateValue
+        nextCalfChanges.shippedTo = destinationLabel
+      } else if (normalizedArrivalStatus === 'not_in_load') {
+        nextCalfChanges.currentRanchID = safeOriginRanchID
+        nextCalfChanges.status = 'feeding'
+        nextCalfChanges.deathDate = null
+        nextCalfChanges.shippedOutDate = null
+        nextCalfChanges.shippedTo = null
+      } else {
+        // In Load or Issue: calf remains as arrived at destination.
+        nextCalfChanges.currentRanchID = safeDestinationRanchID
+        nextCalfChanges.status = 'feeding'
+        nextCalfChanges.deathDate = null
+        nextCalfChanges.shippedOutDate = departureDateValue
+        nextCalfChanges.shippedTo = destinationLabel
+      }
+
+      await calf.update(nextCalfChanges, { transaction: t })
+
+      await calfLoad.update({
+        arrivalStatus: normalizedArrivalStatus,
+      }, { transaction: t })
+
+      await t.commit()
+      return await this.findOne(loadId)
+    } catch (error) {
+      await t.rollback()
       throw error
     }
   }
@@ -415,9 +620,13 @@ class LoadsService {
   }
 
   async findLoadbyRanch(id) {
+    const ranchId = Number(id)
     const loads = await model.Loads.findAll({
       where: {
-        originRanchID: id
+        [Op.or]: [
+          { originRanchID: ranchId },
+          { destinationRanchID: ranchId }
+        ]
       },
       include: { all: true },
       order: [['departureDate', 'DESC']]
@@ -427,11 +636,27 @@ class LoadsService {
       const data = load.toJSON()
       const { createdAt, updatedAt } = this.getAuditTimestamps(load)
       const createdBy = this.getCreatedBy(load)
+      const originRanchId = Number(data.originRanchID)
+      const destinationRanchId = Number(data.destinationRanchID)
+      const isSent = originRanchId === ranchId
+      const isReceived = destinationRanchId === ranchId && originRanchId !== ranchId
+      const direction = isReceived ? 'received' : (isSent ? 'sent' : 'sent')
+      const counterpart = direction === 'received' ? data.origin : data.destination
+      const counterpartName = counterpart?.name || data.destinationName || null
+      const counterpartCity = counterpart?.city || null
+      const counterpartState = counterpart?.state || null
+      const status = this.getLoadStatus(data)
+
       return {
         ...data,
         createdAt,
         updatedAt,
         createdBy,
+        status,
+        direction,
+        counterpartName,
+        counterpartCity,
+        counterpartState,
         headCount: data.load?.length || 0,
         shippedOutDate: data.departureDate || null,
         shippedTo: data.destination?.name || data.destinationName || null
@@ -444,6 +669,7 @@ class LoadsService {
   async createLoad({
     eids = [],
     primaryIDs = [],
+    calfIDs = [],
     originRanchID,
     destinationRanchID,
     destinationName,
@@ -465,6 +691,7 @@ class LoadsService {
 
       // Create load
       let destinationLabel = customDestination
+      const effectiveDepartureDate = departureDate || new Date()
 
       if (destinationRanchIdValue) {
         const destinationRanch = await model.Ranches.findByPk(destinationRanchIdValue, { transaction: t })
@@ -483,30 +710,50 @@ class LoadsService {
       }, { transaction: t })
 
       // If no filters → do NOT modify calves
+      const normalizedCalfIds = this.normalizeIdentifierList(calfIDs)
+        .map((value) => Number(value))
+        .filter(Number.isFinite)
       const hasEids = Array.isArray(eids) && eids.length > 0
       const hasPrimary = Array.isArray(primaryIDs) && primaryIDs.length > 0
+      const hasCalfIds = normalizedCalfIds.length > 0
 
-      if (!hasEids && !hasPrimary) {
+      if (!hasCalfIds && !hasEids && !hasPrimary) {
         await t.commit()
         return load
       }
 
-      // Build where ONLY if filters exist
-      const where = { status: { [Op.in]: ["feeding", "alive"] } }
-      if (hasEids) where.EID = eids.map(eid => String(eid))
-      if (hasPrimary) where.primaryID = primaryIDs
+      // Build where and always scope candidates to origin ranch.
+      const where = {
+        status: { [Op.in]: ["feeding", "alive"] },
+        currentRanchID: Number(originRanchID),
+      }
+
+      if (hasCalfIds) {
+        where.id = { [Op.in]: normalizedCalfIds }
+      } else if (hasEids && hasPrimary) {
+        where[Op.or] = [
+          { EID: eids.map((eid) => String(eid)) },
+          { primaryID: primaryIDs },
+        ]
+      } else if (hasEids) {
+        where.EID = eids.map((eid) => String(eid))
+      } else if (hasPrimary) {
+        where.primaryID = primaryIDs
+      }
 
       // Find calves
       const calves = await model.Calves.findAll({ where, transaction: t })
 
       if (calves.length > 0) {
+        const transferStatus = destinationRanchIdValue ? 'feeding' : 'shipped'
+
         // Update calves
         await Promise.all(
           calves.map(calf =>
             model.Calves.update(
               {
                 currentRanchID: destinationRanchIdValue || calf.currentRanchID,
-                status: "shipped",
+                status: transferStatus,
                 shippedOutDate: departureDate || null,
                 shippedTo: destinationLabel
               },
@@ -518,7 +765,9 @@ class LoadsService {
         // Register load history
         const historyEntries = calves.map(calf => ({
           calfID: calf.id,
-          loadID: load.id
+          loadID: load.id,
+          daysOnFeedAtShipment: this.calculateDaysOnFeedAtShipment(calf, effectiveDepartureDate),
+          arrivalStatus: null
         }))
 
         await model.CalfLoads.bulkCreate(historyEntries, { transaction: t })
@@ -527,11 +776,11 @@ class LoadsService {
           calfID: calf.id,
           loadID: load.id,
           movementType: 'load_transfer',
-          eventDate: departureDate || new Date(),
+          eventDate: effectiveDepartureDate,
           fromRanchID: originRanchID || calf.currentRanchID || null,
           toRanchID: destinationRanchIdValue || null,
           fromStatus: calf.status || 'feeding',
-          toStatus: 'shipped',
+          toStatus: transferStatus,
           notes: notes || trucking || 'Transferred by load'
         }))
 

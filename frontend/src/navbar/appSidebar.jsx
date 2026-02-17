@@ -4,7 +4,7 @@ import { useToken } from '../api/useToken'
 import { useAppContext } from '../context'
 import { RanchSwitcher } from './components/ranchSwitcher'
 import { NavLink, useLocation, useParams } from 'react-router-dom'
-import { ChevronDown, Container, FileClock, FileText, LayoutDashboard, PencilLine, ReceiptText, Settings, Sheet, Tag, Truck } from 'lucide-react'
+import { ChevronDown, Container, DollarSign, FileClock, FileText, LayoutDashboard, PencilLine, ReceiptText, Settings, Sheet, Tag, Truck } from 'lucide-react'
 
 import {
   Sidebar,
@@ -64,6 +64,11 @@ export function AppSidebar() {
         title: "Manage Calves",
         url: ranch?.id ? `/ranches/${ranch.id}/manage-calves` : "",
         icon: PencilLine,
+      },
+      {
+        title: "Set Prices",
+        url: ranch?.id ? `/ranches/${ranch.id}/set-prices` : "",
+        icon: DollarSign,
       },
     ]
 

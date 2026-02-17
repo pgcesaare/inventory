@@ -1,4 +1,9 @@
 import api from '../api'
+import { normalizeRanchDisplay } from "../../utils/ranchDisplay"
+
+const normalizeRanchList = (items) => (
+  Array.isArray(items) ? items.map((item) => normalizeRanchDisplay(item)) : []
+)
 
 export const getRanches = async (token) => {
     try {
@@ -8,7 +13,7 @@ export const getRanches = async (token) => {
             headers: { Authorization: `Bearer ${token}` } 
         
         })
-      return response.data
+      return normalizeRanchList(response.data)
       
     } catch (error) {
       console.error('Error fetching ranches:', error)
@@ -24,7 +29,7 @@ export const getRanchById = async (id, token) => {
             headers: { Authorization: `Bearer ${token}` } 
         
         })
-      return response.data
+      return normalizeRanchDisplay(response.data)
       
     } catch (error) {
       console.error('Error fetching ranches:', error)
@@ -44,7 +49,7 @@ export const createRanch = async (ranch, token) => {
             } 
         
         })
-      return response.data
+      return normalizeRanchDisplay(response.data)
       
     } catch (error) {
       console.error('Error fetching ranches:', error)
@@ -63,7 +68,7 @@ export const updateRanch = async (id, ranch, token) => {
             }
 
         })
-      return response.data
+      return normalizeRanchDisplay(response.data)
 
     } catch (error) {
       console.error('Error updating ranch:', error)

@@ -1,5 +1,5 @@
 const express = require('express')
-const { createLoadsSchema, getLoadsSchema, updateLoadsSchema } = require('../schemas/loads.schema')
+const { createLoadsSchema, getLoadsSchema, updateLoadsSchema, updateLoadCalfArrivalStatusSchema } = require('../schemas/loads.schema')
 const validatorHandler = require('../middlewares/validator.handler')
 const LoadsService = require('../services/loads.service')
 const { getCreatedByFromRequest } = require('../utils/authUser')
@@ -74,6 +74,24 @@ router.patch('/:id',
       const { id } = req.params
       const body = req.body
       res.status(201).json(await service.update(id, body))
+    } catch (error) {
+      next(error)
+    }
+  }
+)
+
+router.patch('/:id/calf-status',
+  validatorHandler(getLoadsSchema, 'params'),
+  validatorHandler(updateLoadCalfArrivalStatusSchema, 'body'),
+  async (req, res, next) => {
+    try {
+      const { id } = req.params
+      const { calfID, arrivalStatus, actingRanchID } = req.body
+      res.status(201).json(await service.updateCalfArrivalStatus(id, {
+        calfID,
+        arrivalStatus,
+        actingRanchID,
+      }))
     } catch (error) {
       next(error)
     }

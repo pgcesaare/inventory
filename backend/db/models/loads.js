@@ -60,6 +60,12 @@ const LoadsSchema = {
     type: DataTypes.STRING,
    },
 
+  afterArrivalNotes: {
+    allowNull: true,
+    type: DataTypes.STRING,
+    field: 'after_arrival_notes',
+  },
+
   trucking: {
     allowNull: true,
     type: DataTypes.STRING,

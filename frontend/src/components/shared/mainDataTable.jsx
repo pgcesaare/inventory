@@ -26,6 +26,8 @@ const MainDataTable = ({
   disableHorizontalScroll = false,
   defaultSortKey = "",
   defaultSortDirection = "asc",
+  emptyMessage = "No data available.",
+  emptyState = null,
 }) => {
   const [sortConfig, setSortConfig] = useState({
     key: defaultSortKey,
@@ -108,19 +110,19 @@ const MainDataTable = ({
   }, [currentPage, totalPages])
 
   return (
-    <div className={`relative w-full max-w-full rounded-2xl border border-primary-border/30 bg-white shadow-sm ${clipHorizontalOverflow ? "overflow-x-hidden overflow-y-visible" : "overflow-visible"}`}>
-      <div className="px-4 py-3 border-b border-primary-border/30">
+    <div className={`relative w-full max-w-full rounded-2xl border border-primary-border/45 bg-surface shadow-sm dark:border-primary-border/65 ${clipHorizontalOverflow ? "overflow-x-hidden overflow-y-visible" : "overflow-visible"}`}>
+      <div className="px-4 py-3 border-b border-primary-border/35 dark:border-primary-border/60">
         <h3 className="text-sm font-semibold text-primary-text">{title}</h3>
       </div>
       {filters ? (
-        <div className="px-4 py-3 border-b border-primary-border/20 bg-primary-border/5">
+        <div className="px-4 py-3 border-b border-primary-border/30 bg-primary-border/8 dark:border-primary-border/60 dark:bg-primary-border/14">
           {filters}
         </div>
       ) : null}
 
       <div className={`w-full max-w-full rounded-b-2xl ${disableHorizontalScroll ? "overflow-x-hidden" : "overflow-x-auto"}`}>
         <table className={`min-w-full border-collapse ${tableClassName}`}>
-          <thead className="bg-primary-border/10">
+          <thead className="bg-primary-border/12 dark:bg-primary-border/24">
             <tr>
               {columns.map((column) => (
                 <th
@@ -136,7 +138,7 @@ const MainDataTable = ({
                   ) : (
                     <button
                       type="button"
-                      className={`inline-flex items-center gap-1 cursor-pointer ${column.align === "right" ? "ml-auto" : ""}`}
+                      className={`inline-flex items-center gap-1 cursor-pointer rounded px-1 py-0.5 hover:bg-primary-border/15 ${column.align === "right" ? "ml-auto" : ""}`}
                       onClick={() => toggleSort(column.key)}
                     >
                       {headerRenderers?.[column.key]
@@ -158,7 +160,7 @@ const MainDataTable = ({
                   colSpan={columns.length}
                   className="px-4 py-10 text-sm text-secondary text-center"
                 >
-                  No data available.
+                  {emptyState || emptyMessage}
                 </td>
               </tr>
             )}
@@ -168,9 +170,9 @@ const MainDataTable = ({
                 key={row.id || row.visualTag || `row-${index}`}
                 onClick={() => onRowClick && onRowClick(row)}
                 className={`
-                  border-t border-primary-border/20 hover:bg-primary-border/5
+                  border-t border-primary-border/25 hover:bg-primary-border/8
                   ${onRowClick ? "cursor-pointer" : ""}
-                  ${selectedRowKey && selectedRowKey === (row.id || row.visualTag) ? "bg-action-blue/10" : ""}
+                  ${selectedRowKey && selectedRowKey === (row.id || row.visualTag) ? "bg-action-blue/12" : ""}
                 `}
               >
                 {columns.map((column) => (
@@ -202,7 +204,7 @@ const MainDataTable = ({
         </table>
       </div>
       {enablePagination && (
-        <div className="flex flex-col gap-2 border-t border-primary-border/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 border-t border-primary-border/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-primary-border/60">
           <p className="text-xs text-secondary">
             Showing {pageStart}-{pageEnd} of {sortedRows.length}
           </p>

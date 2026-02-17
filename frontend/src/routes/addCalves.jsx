@@ -65,8 +65,6 @@ const HEADER_MAP = {
   shippedtooptional: "shippedTo",
   condition: "condition",
   conditionoptional: "condition",
-  calftype: "calfType",
-  calftypeoptional: "calfType",
   dayesonfeed: "preDaysOnFeed",
   daysonfeed: "preDaysOnFeed",
   daysonfeedoptional: "preDaysOnFeed",
@@ -129,13 +127,6 @@ const normalizeStatus = (value) => {
   if (normalized === "sold") return "sold"
   if (normalized === "shipped" || normalized === "shipped out") return "shipped"
 
-  return ""
-}
-
-const normalizeCalfType = (value) => {
-  const normalized = cleanText(value)
-  if (!normalized) return ""
-  if (normalized === "1" || normalized === "2") return normalized
   return ""
 }
 
@@ -239,7 +230,6 @@ const buildTemplateFile = () => {
     "Shipped Out Date (OPTIONAL)",
     "Shipped To (OPTIONAL)",
     "Condition (OPTIONAL)",
-    "Calf Type (OPTIONAL)",
     "Pre Days On Feed (OPTIONAL)",
   ]
 
@@ -262,7 +252,6 @@ const buildTemplateFile = () => {
     "",
     "",
     "",
-    "1",
     0,
   ]
 
@@ -683,7 +672,6 @@ const getSearchPlaceholder = (mode, field) => {
           shippedOutDate: normalizeDate(row.shippedOutDate),
           shippedTo: cleanText(row.shippedTo),
           condition: cleanText(row.condition),
-          calfType: normalizeCalfType(row.calfType) || undefined,
           // Ranch IDs from Excel are ignored; both are always set by current route ranch.
           currentRanchID: ranchId,
           originRanchID: ranchId,
@@ -705,9 +693,6 @@ const getSearchPlaceholder = (mode, field) => {
         if (!payload.currentRanchID) errors.push("currentRanchID is required")
         if (cleanText(row.status) && !normalizeStatus(row.status)) {
           errors.push(`Status value "${cleanText(row.status)}" is invalid. Use feeding, alive, sold, shipped, or dead/deceased`)
-        }
-        if (cleanText(row.calfType) && !payload.calfType) {
-          errors.push(`Calf Type value "${cleanText(row.calfType)}" is invalid. Use 1 or 2`)
         }
 
         const tagKey = normalizeIdentifier(payload.primaryID)

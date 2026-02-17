@@ -9,8 +9,11 @@ const arrivalDate = Joi.date()
 const notes = Joi.string().max(255)
 const eids = Joi.array()
 const primaryIDs = Joi.array().items(Joi.string())
+const calfIDs = Joi.array().items(Joi.number().integer())
 const trucking = Joi.string().allow(null, '')
 const createdBy = Joi.string().allow(null, '')
+const arrivalStatus = Joi.string().valid('doa', 'issue', 'not_in_load').insensitive().trim()
+const afterArrivalNotes = Joi.string().max(255).allow(null, '')
 
 const createLoadsSchema = Joi.object({
 
@@ -23,7 +26,8 @@ const createLoadsSchema = Joi.object({
     trucking: trucking,
     createdBy: createdBy,
     eids: eids.allow(null),
-    primaryIDs: primaryIDs.allow(null)
+    primaryIDs: primaryIDs.allow(null),
+    calfIDs: calfIDs.allow(null)
 
 }).or('destinationRanchID', 'destinationName')
 
@@ -41,11 +45,19 @@ const updateLoadsSchema = Joi.object({
     departureDate: departureDate,
     arrivalDate: arrivalDate,
     notes: notes,
+    afterArrivalNotes: afterArrivalNotes,
     trucking: trucking,
     eids: eids,
-    primaryIDs: primaryIDs
+    primaryIDs: primaryIDs,
+    calfIDs: calfIDs
 
 
 })
 
-module.exports = { createLoadsSchema, getLoadsSchema, updateLoadsSchema }
+const updateLoadCalfArrivalStatusSchema = Joi.object({
+    calfID: id.required(),
+    actingRanchID: id.required(),
+    arrivalStatus: arrivalStatus.allow(null, '').required()
+})
+
+module.exports = { createLoadsSchema, getLoadsSchema, updateLoadsSchema, updateLoadCalfArrivalStatusSchema }

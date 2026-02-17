@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
-import { useParams } from "react-router-dom"
+import { useNavigate, useParams } from "react-router-dom"
 import { Download, Search, X } from "lucide-react"
 import * as XLSX from "xlsx"
 import { saveAs } from "file-saver"
@@ -9,6 +9,7 @@ import { getCalvesByRanch, getCalfMovementHistory, updateCalf, deleteCalf } from
 import { useAppContext } from "../context"
 import { formatDateMMDDYYYY, formatDateTimeMMDDYYYY } from "../utils/dateFormat"
 import { isDateInDateRange } from "../utils/dateRange"
+import { buildCalfDetailRows } from "../utils/calfDetailRows"
 import MainDataTable from "../components/shared/mainDataTable"
 import DateFilterMenu from "../components/shared/dateFilterMenu"
 import BreedSellerFilterMenu from "../components/shared/breedSellerFilterMenu"
@@ -50,6 +51,7 @@ const parseDateToLocalDayStart = (value) => {
 const Historical = () => {
 
     const { id } = useParams()
+    const navigate = useNavigate()
     const token = useToken()
     const { ranch, setRanch, confirmAction, showSuccess, showError } = useAppContext()
     const [calves, setCalves] = useState([])
@@ -446,61 +448,23 @@ const Historical = () => {
     }
 
     const selectedCalfInfo = movementHistory?.calf || selectedCalfDetails || null
-    const detailRows = selectedCalfInfo ? [
-      { label: "Visual Tag", value: selectedCalfInfo.primaryID || selectedCalf?.visualTag || "-" },
-      { label: "EID", value: selectedCalfInfo.EID || selectedCalf?.eid || "-" },
-      { label: "Back Tag", value: selectedCalfInfo.backTag || selectedCalfInfo.originalID || "-" },
-      {
-        label: "Date In",
-        value: formatDate(selectedCalfInfo.dateIn || selectedCalfInfo.placedDate)
+    const detailRows = buildCalfDetailRows({
+      calfInfo: selectedCalfInfo,
+      selectedCalf,
+      selectedCalfDetails,
+      formatDate,
+      formatDateTime: (value) => formatDateTimeMMDDYYYY(value, "N/A"),
+      calculateDaysOnFeed,
+      getWeightBracketLabel,
+      effectiveWeightBrackets,
+      formatStatus: (calf) => {
+        const normalized = normalizeStatus(calf)
+        if (normalized === "dead") return "Dead"
+        if (normalized === "feeding") return "Feeding"
+        if (normalized === "shipped") return "Shipped"
+        return calf.status || "-"
       },
-      {
-        label: "Breed",
-        value: selectedCalfInfo.breed
-          ? selectedCalfInfo.breed.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
-          : "-"
-      },
-      {
-        label: "Sex",
-        value: selectedCalfInfo.sex
-          ? selectedCalfInfo.sex.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
-          : "-"
-      },
-      { label: "Weight", value: selectedCalfInfo.weight ?? "-" },
-      { label: "Weight Bracket", value: getWeightBracketLabel(selectedCalfInfo.weight, effectiveWeightBrackets, selectedCalfInfo.breed) },
-      {
-        label: "Purchase Price",
-        value: selectedCalfInfo.purchasePrice ?? selectedCalfInfo.price
-          ? `$${Number(selectedCalfInfo.purchasePrice ?? selectedCalfInfo.price).toLocaleString()}`
-          : "-"
-      },
-      {
-        label: "Sell Price",
-        value: selectedCalfInfo.sellPrice
-          ? `$${Number(selectedCalfInfo.sellPrice).toLocaleString()}`
-          : "-"
-      },
-      { label: "Seller", value: selectedCalfInfo.seller || "-" },
-      { label: "Dairy", value: selectedCalfInfo.dairy || "-" },
-      {
-        label: "Status",
-        value: (() => {
-          const normalized = normalizeStatus(selectedCalfInfo)
-          if (normalized === "dead") return "Dead"
-          if (normalized === "feeding") return "Feeding"
-          if (normalized === "shipped") return "Shipped"
-          return selectedCalfInfo.status || "-"
-        })()
-      },
-      { label: "Protein Level", value: selectedCalfInfo.proteinLevel ?? "-" },
-      { label: "Protein Test", value: selectedCalfInfo.proteinTest || "-" },
-      { label: "Death Date", value: formatDate(selectedCalfInfo.deathDate) },
-      { label: "Pre Days On Feed", value: selectedCalfInfo.preDaysOnFeed ?? "-" },
-      { label: "Days On Feed", value: calculateDaysOnFeed(selectedCalfInfo) },
-      { label: "Created By", value: selectedCalfInfo.createdBy || selectedCalfInfo.created_by || "N/A" },
-      { label: "Created At", value: formatDateTimeMMDDYYYY(selectedCalfInfo.createdAt || selectedCalfInfo.created_at, "N/A") },
-      { label: "Updated At", value: formatDateTimeMMDDYYYY(selectedCalfInfo.updatedAt || selectedCalfInfo.updated_at, "N/A") },
-    ] : []
+    })
 
     const toNumberOrNull = (value) => {
       if (value === "" || value === null || value === undefined) return null
@@ -651,6 +615,19 @@ const Historical = () => {
         <MainDataTable
           title="Historical Overview"
           rows={tableRows}
+          emptyState={(
+            <div className="flex flex-col items-center gap-2 py-1">
+              <p className="text-sm font-medium text-primary-text">No historical records found.</p>
+              <p className="text-xs text-secondary">Create calves to start building historical placements.</p>
+              <button
+                type="button"
+                className="mt-1 rounded-lg border border-action-blue/80 bg-action-blue px-3 py-1.5 text-xs font-semibold text-white hover:bg-action-blue/90"
+                onClick={() => navigate(`/ranches/${id}/add-calves`)}
+              >
+                Create Calves
+              </button>
+            </div>
+          )}
           enablePagination
           pageSize={mainRowLimit}
           defaultSortKey="visualTag"

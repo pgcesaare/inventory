@@ -50,9 +50,11 @@ const DateFilterMenu = ({ dateFrom, dateTo, onChange, className = "", menuAlign 
     const now = new Date()
     const start = new Date(now)
     const day = now.getDay() // Sunday=0, Monday=1, ... Saturday=6
-    const daysSinceMonday = day === 0 ? 6 : day - 1
+    const daysSinceMonday = (day + 6) % 7
     start.setDate(now.getDate() - daysSinceMonday)
-    setRange(toISODate(start), toISODate(now))
+    const end = new Date(start)
+    end.setDate(start.getDate() + 6)
+    setRange(toISODate(start), toISODate(end))
   }
 
   const applyThisMonth = () => {

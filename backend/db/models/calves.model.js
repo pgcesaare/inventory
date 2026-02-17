@@ -1,4 +1,4 @@
-const { Model, DataTypes, Sequelize, ENUM } = require('sequelize')
+const { Model, DataTypes } = require('sequelize')
 
 const { RANCHES_TABLE } = require('./ranches')
 
@@ -137,12 +137,6 @@ const CalvesSchema = {
   condition: {
     allowNull: true,
     type: DataTypes.STRING,
-  },
-
-  calfType: {
-    allowNull: true,
-    type: DataTypes.ENUM('1','2'),
-    defaultValue: '1'
   },
 
   preDaysOnFeed: {

@@ -1,4 +1,63 @@
 import api from '../api'
+import { normalizeRanchDisplay } from "../../utils/ranchDisplay"
+
+const normalizeCalfRanchDisplay = (calf) => {
+  if (!calf || typeof calf !== "object") return calf
+  return {
+    ...calf,
+    origin: normalizeRanchDisplay(calf.origin),
+    destination: normalizeRanchDisplay(calf.destination),
+    currentRanch: normalizeRanchDisplay(calf.currentRanch),
+  }
+}
+
+const normalizeCalfListRanchDisplay = (items) => (
+  Array.isArray(items) ? items.map((item) => normalizeCalfRanchDisplay(item)) : []
+)
+
+const normalizeMovementEventRanchDisplay = (event) => {
+  if (!event || typeof event !== "object") return event
+  return {
+    ...event,
+    fromRanch: normalizeRanchDisplay(event.fromRanch),
+    toRanch: normalizeRanchDisplay(event.toRanch),
+    load: event.load && typeof event.load === "object"
+      ? {
+          ...event.load,
+          origin: normalizeRanchDisplay(event.load.origin),
+          destination: normalizeRanchDisplay(event.load.destination),
+        }
+      : event.load,
+  }
+}
+
+const normalizeMovementHistoryPayload = (payload) => {
+  if (payload === null || payload === undefined) return payload
+
+  if (Array.isArray(payload)) {
+    return {
+      calf: null,
+      events: payload.map((event) => normalizeMovementEventRanchDisplay(event)),
+    }
+  }
+
+  if (typeof payload !== "object") {
+    return {
+      calf: null,
+      events: [],
+    }
+  }
+
+  return {
+    ...payload,
+    calf: payload.calf && typeof payload.calf === "object"
+      ? normalizeCalfRanchDisplay(payload.calf)
+      : payload.calf ?? null,
+    events: Array.isArray(payload.events)
+      ? payload.events.map((event) => normalizeMovementEventRanchDisplay(event))
+      : [],
+  }
+}
 
 export const getCalvesByRanch = async (id, token) => {
     try {
@@ -8,7 +67,7 @@ export const getCalvesByRanch = async (id, token) => {
             headers: { Authorization: `Bearer ${token}` } 
         
         })
-      return response.data
+      return normalizeCalfListRanchDisplay(response.data)
       
     } catch (error) {
       console.error('Error fetching calves:', error)
@@ -24,7 +83,7 @@ export const getInventoryByRanch = async (id, token) => {
             headers: { Authorization: `Bearer ${token}` } 
         
         })
-      return response.data
+      return normalizeCalfListRanchDisplay(response.data)
       
     } catch (error) {
       console.error('Error fetching calves:', error)
@@ -38,7 +97,7 @@ export const getManageCalvesByRanch = async (id, token) => {
         {
             headers: { Authorization: `Bearer ${token}` }
         })
-      return response.data
+      return normalizeCalfListRanchDisplay(response.data)
 
     } catch (error) {
       console.error('Error fetching manage calves:', error)
@@ -73,7 +132,7 @@ export const getCalfMovementHistory = async (id, token) => {
             headers: { Authorization: `Bearer ${token}` }
 
         })
-      return response.data
+      return normalizeMovementHistoryPayload(response.data)
 
     } catch (error) {
       console.error('Error fetching calf movement history:', error)

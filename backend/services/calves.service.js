@@ -107,11 +107,33 @@ class CalvesService {
         })
 
         const events = movementEntries
+            .filter((entry) => {
+                const movementType = String(entry?.movementType || '').toLowerCase()
+                const hasLoadId = Number.isFinite(Number(entry?.loadID)) && Number(entry?.loadID) > 0
+                const hasLoad = Boolean(entry?.load)
+
+                // Hide pure status change entries in timeline.
+                if (movementType === 'status_change') return false
+
+                // Hide any transfer rows that do not point to an existing load.
+                if (movementType === 'load_transfer' && (!hasLoadId || !hasLoad)) return false
+                if (hasLoadId && !hasLoad) return false
+
+                return true
+            })
             .map((entry) => {
+                const loadCreatedAt =
+                    entry?.load?.createdAt ||
+                    entry?.load?.created_at ||
+                    (typeof entry?.load?.get === 'function' ? entry.load.get('created_at') : null) ||
+                    (entry?.load?.dataValues ? entry.load.dataValues.created_at : null) ||
+                    null
+
                 return {
                     type: entry.movementType,
                     movementID: entry.id,
                     loadID: entry.loadID || null,
+                    loadCreatedAt,
                     date: entry.eventDate || null,
                     departureDate: entry.load?.departureDate || null,
                     arrivalDate: entry.load?.arrivalDate || null,
@@ -164,6 +186,7 @@ class CalvesService {
                 sellPrice: calf.sellPrice,
                 seller: calf.seller,
                 dairy: calf.dairy,
+                condition: calf.condition,
                 status: calf.status,
                 proteinLevel: calf.proteinLevel,
                 proteinTest: calf.proteinTest,

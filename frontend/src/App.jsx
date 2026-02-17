@@ -6,6 +6,7 @@ import Ranches from "./routes/ranches";
 import Historical from "./routes/historical";
 import Inventory from "./routes/inventory";
 import AddCalves from "./routes/addCalves";
+import SetPrices from "./routes/setPrices";
 import NavbarLayout from "./navbar/components/navbarLayout";
 import { useAppContext } from "./context";
 import CreateNewRanch from "./components/ranches/createRanch";
@@ -96,6 +97,16 @@ const AppRoutes = ({ isAuthenticated }) => {
           title="Manage calves"
           isAuthenticated={isAuthenticated}>
           <Inventory />
+        </ProtectedTemplate>
+      ),
+    },
+    {
+      path: "/ranches/:id/set-prices",
+      element: (
+        ranchRouteGuard || <ProtectedTemplate
+          title="Set Prices"
+          isAuthenticated={isAuthenticated}>
+          <SetPrices />
         </ProtectedTemplate>
       ),
     },

@@ -1,7 +1,7 @@
 import LoadList from "../components/loads/routes/loadList/loadList"
 import LoadSlideContainer from "../components/loads/loadSlideContainer"
 import CreateLoadBtn from "../components/loads/createLoadBtn"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import CreateLoad from "../components/loads/routes/create-load/createLoad"
 import LoadDetails from "../components/loads/routes/loadList/loadDetails"
 import { getLoadById } from "../api/loads"
@@ -14,6 +14,7 @@ const Load = () => {
     const [selectedLoadData, setSelectedLoadData] = useState(null)
     const [selectedCreateLoad, setSelectedCreateLoad] = useState(false)
     const [isSlideOpen, setIsSlideOpen] = useState(false)
+    const [pendingDetailAction, setPendingDetailAction] = useState(null)
     const [isLoads, setIsLoads] = useState(true)
     const [refreshKey, setRefreshKey] = useState(0)
     const [loadingSelectedLoad, setLoadingSelectedLoad] = useState(false)
@@ -25,6 +26,12 @@ const Load = () => {
 
     useEffect(() => {
         if (selectedLoad) setSelectedCreateLoad(false)
+    }, [selectedLoad])
+
+    useEffect(() => {
+        if (!selectedLoad) {
+            setPendingDetailAction(null)
+        }
     }, [selectedLoad])
 
     useEffect(() => {
@@ -62,6 +69,19 @@ const Load = () => {
         setSelectedCreateLoad(true)
     }
 
+    const handleOpenLoadFromList = (loadId) => {
+        setPendingDetailAction(null)
+        setSelectedLoad(loadId)
+    }
+
+    const handleQuickEditLoad = (loadId) => {
+        setPendingDetailAction("edit")
+        setSelectedLoad(loadId)
+    }
+    const handleInitialActionHandled = useCallback(() => {
+        setPendingDetailAction(null)
+    }, [])
+
     const handleCreated = () => {
         setRefreshKey((prev) => prev + 1)
         setSelectedCreateLoad(false)
@@ -77,6 +97,7 @@ const Load = () => {
         setIsSlideOpen(false)
         setSelectedLoad(null)
         setSelectedLoadData(null)
+        setPendingDetailAction(null)
     }
 
   return (
@@ -97,7 +118,9 @@ const Load = () => {
             </div>
           ) : (
             <LoadList
-              setSelectedLoad={setSelectedLoad}
+              setSelectedLoad={handleOpenLoadFromList}
+              onQuickEditLoad={handleQuickEditLoad}
+              onLoadUpdated={handleUpdated}
               selectedLoadId={selectedLoad}
               isDetailsOpen={isSlideOpen}
               onOpen={handleCreateLoad}
@@ -117,7 +140,13 @@ const Load = () => {
                 {loadingSelectedLoad ? (
                   <LoadDetailsSkeleton />
                 ) : (
-                  <LoadDetails load={selectedLoadData} onUpdated={handleUpdated} onDeleted={handleDeleted} />
+                  <LoadDetails
+                    load={selectedLoadData}
+                    onUpdated={handleUpdated}
+                    onDeleted={handleDeleted}
+                    initialAction={pendingDetailAction}
+                    onInitialActionHandled={handleInitialActionHandled}
+                  />
                 )}
               </div>
             </LoadSlideContainer>

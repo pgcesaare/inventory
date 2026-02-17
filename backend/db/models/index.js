@@ -4,6 +4,7 @@ const { Loads, LoadsSchema } = require('./loads')
 const { CalfLoads, calfLoadsSchema } = require('./calfLoads.model')
 const { CalfMovementHistory, CalfMovementHistorySchema } = require('./calfMovementHistory.model')
 const { RanchWeightCategories, RanchWeightCategoriesSchema } = require('./ranchWeightCategories.model')
+const { RanchPricePeriods, RanchPricePeriodsSchema } = require('./ranchPricePeriods.model')
 const { Breeds, BreedsSchema } = require('./breeds.model')
 const { Sellers, SellersSchema } = require('./sellers.model')
 
@@ -15,6 +16,7 @@ function setupModels(sequelize) {
     CalfLoads.init(calfLoadsSchema, CalfLoads.config(sequelize))
     CalfMovementHistory.init(CalfMovementHistorySchema, CalfMovementHistory.config(sequelize))
     RanchWeightCategories.init(RanchWeightCategoriesSchema, RanchWeightCategories.config(sequelize))
+    RanchPricePeriods.init(RanchPricePeriodsSchema, RanchPricePeriods.config(sequelize))
     Breeds.init(BreedsSchema, Breeds.config(sequelize))
     Sellers.init(SellersSchema, Sellers.config(sequelize))
 
@@ -24,6 +26,7 @@ function setupModels(sequelize) {
     CalfLoads.associate(sequelize.models)
     CalfMovementHistory.associate(sequelize.models)
     RanchWeightCategories.associate(sequelize.models)
+    RanchPricePeriods.associate(sequelize.models)
     Breeds.associate(sequelize.models)
     Sellers.associate(sequelize.models)
 

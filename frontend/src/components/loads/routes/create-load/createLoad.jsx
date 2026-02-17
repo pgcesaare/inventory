@@ -86,6 +86,7 @@ const CreateLoad = ({ onCreated }) => {
   const [pickerRowLimit, setPickerRowLimit] = useState(15)
   const [pickerPage, setPickerPage] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [wizardStep, setWizardStep] = useState("setup")
   const [message, setMessage] = useState("")
   const [fieldErrors, setFieldErrors] = useState({})
   const [pickerError, setPickerError] = useState("")
@@ -275,6 +276,18 @@ const CreateLoad = ({ onCreated }) => {
   const selectedCount = selectedCalfIDs.length
   const quickPickerLimits = [100, 150, 200, 230]
   const hasSelectedDestinationRanch = Boolean(form.destinationRanchID)
+  const selectedCalves = useMemo(
+    () => inventoryCalves.filter((calf) => selectedCalfIDs.includes(calf.id)),
+    [inventoryCalves, selectedCalfIDs]
+  )
+  const selectedDestination = useMemo(
+    () => destinations.find((ranch) => Number(ranch.id) === Number(form.destinationRanchID)) || null,
+    [destinations, form.destinationRanchID]
+  )
+  const reviewDestinationLabel = useMemo(() => {
+    const customDestination = String(form.destinationName || "").trim()
+    return selectedDestination?.name || customDestination || "-"
+  }, [selectedDestination, form.destinationName])
 
   const setField = (key, value) => {
     setFieldErrors((prev) => {
@@ -330,10 +343,7 @@ const CreateLoad = ({ onCreated }) => {
     ))
   }
 
-  const submit = async (event) => {
-    event.preventDefault()
-    if (!token || !id) return
-
+  const validateBeforeSubmit = () => {
     const originRanchId = Number(id)
     const destinationRanchIdValue = form.destinationRanchID ? Number(form.destinationRanchID) : null
     const customDestination = String(form.destinationName || "").trim()
@@ -370,24 +380,50 @@ const CreateLoad = ({ onCreated }) => {
       if (firstInvalidElement) {
         firstInvalidElement.scrollIntoView({ behavior: "smooth", block: "center" })
       }
+      return { isValid: false }
+    }
+    setFieldErrors({})
+    setPickerError("")
+    return {
+      isValid: true,
+      originRanchId,
+      destinationRanchIdValue,
+      customDestination,
+    }
+  }
+
+  const goToReviewStep = (event) => {
+    if (event) event.preventDefault()
+    const validation = validateBeforeSubmit()
+    if (!validation?.isValid) {
+      setWizardStep("setup")
+      return
+    }
+    setWizardStep("review")
+    setMessage("")
+  }
+
+  const submit = async (event) => {
+    if (event) event.preventDefault()
+    if (!token || !id) return
+
+    const validation = validateBeforeSubmit()
+    if (!validation?.isValid) {
+      setWizardStep("setup")
       return
     }
 
     try {
       setIsSubmitting(true)
       setMessage("")
-      setFieldErrors({})
-      setPickerError("")
-
-      const selectedCalves = inventoryCalves.filter((calf) => selectedCalfIDs.includes(calf.id))
       const primaryIDs = [...new Set(selectedCalves.map((calf) => String(calf.primaryID || "").trim()).filter(Boolean))]
       const eids = [...new Set(selectedCalves.map((calf) => String(calf.EID || "").trim()).filter(Boolean))]
 
       await createLoad(
         {
-          originRanchID: originRanchId,
-          destinationRanchID: destinationRanchIdValue,
-          destinationName: customDestination || null,
+          originRanchID: validation.originRanchId,
+          destinationRanchID: validation.destinationRanchIdValue,
+          destinationName: validation.customDestination || null,
           createdBy: createdByName,
           departureDate: form.departureDate,
           arrivalDate: form.arrivalDate || null,
@@ -395,6 +431,7 @@ const CreateLoad = ({ onCreated }) => {
           notes: form.notes || null,
           primaryIDs,
           eids,
+          calfIDs: selectedCalfIDs,
         },
         token
       )
@@ -410,8 +447,26 @@ const CreateLoad = ({ onCreated }) => {
     }
   }
 
+  const handleSubmit = (event) => {
+    if (wizardStep === "setup") {
+      goToReviewStep(event)
+      return
+    }
+    submit(event)
+  }
+
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <div className="rounded-2xl border border-primary-border/30 bg-white p-3">
+        <div className="flex items-center gap-2 text-xs">
+          <span className={`rounded-full px-2.5 py-1 font-medium ${wizardStep === "setup" ? "bg-action-blue text-white" : "bg-primary-border/10 text-secondary"}`}>1. Setup</span>
+          <span className="text-secondary">→</span>
+          <span className={`rounded-full px-2.5 py-1 font-medium ${wizardStep === "review" ? "bg-action-blue text-white" : "bg-primary-border/10 text-secondary"}`}>2. Review</span>
+        </div>
+      </div>
+
+      {wizardStep === "setup" && (
+        <>
       <div className="rounded-2xl border border-primary-border/30 bg-surface p-4 h-full">
         <p className="text-xs uppercase tracking-wide text-secondary">Load settings</p>
         <p className="mt-1 text-xs text-secondary">Fields marked with <span className="text-red-600">*</span> are required. For destination, provide ranch or custom value.</p>
@@ -759,6 +814,54 @@ const CreateLoad = ({ onCreated }) => {
           </div>
         </div>
       </div>
+      </>
+      )}
+
+      {wizardStep === "review" && (
+        <div className="rounded-2xl border border-primary-border/30 bg-surface p-5 space-y-4">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-secondary">Review Load</p>
+            <h3 className="mt-1 text-lg font-semibold text-primary-text">Confirm before creating</h3>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-primary-border/30 bg-white p-3">
+              <p className="text-[11px] uppercase tracking-wide text-secondary">Origin Ranch ID</p>
+              <p className="mt-1 text-sm font-medium text-primary-text">{id}</p>
+            </div>
+            <div className="rounded-xl border border-primary-border/30 bg-white p-3">
+              <p className="text-[11px] uppercase tracking-wide text-secondary">Destination</p>
+              <p className="mt-1 text-sm font-medium text-primary-text">{reviewDestinationLabel}</p>
+            </div>
+            <div className="rounded-xl border border-primary-border/30 bg-white p-3">
+              <p className="text-[11px] uppercase tracking-wide text-secondary">Shipped Out Date</p>
+              <p className="mt-1 text-sm font-medium text-primary-text">{dateLabel(form.departureDate)}</p>
+            </div>
+            <div className="rounded-xl border border-primary-border/30 bg-white p-3">
+              <p className="text-[11px] uppercase tracking-wide text-secondary">Arrival Date</p>
+              <p className="mt-1 text-sm font-medium text-primary-text">{dateLabel(form.arrivalDate)}</p>
+            </div>
+            <div className="rounded-xl border border-primary-border/30 bg-white p-3">
+              <p className="text-[11px] uppercase tracking-wide text-secondary">Trucking</p>
+              <p className="mt-1 text-sm font-medium text-primary-text">{form.trucking || "-"}</p>
+            </div>
+            <div className="rounded-xl border border-primary-border/30 bg-white p-3">
+              <p className="text-[11px] uppercase tracking-wide text-secondary">Selected Calves</p>
+              <p className="mt-1 text-sm font-medium text-primary-text">{selectedCalfIDs.length}</p>
+            </div>
+            <div className="rounded-xl border border-primary-border/30 bg-white p-3 md:col-span-2">
+              <p className="text-[11px] uppercase tracking-wide text-secondary">Notes</p>
+              <p className="mt-1 text-sm text-primary-text">{form.notes || "-"}</p>
+            </div>
+            <div className="rounded-xl border border-primary-border/30 bg-white p-3 md:col-span-2">
+              <p className="text-[11px] uppercase tracking-wide text-secondary">Selected Visual Tags</p>
+              <p className="mt-1 text-sm text-primary-text">
+                {selectedCalves.slice(0, 20).map((calf) => calf.primaryID).filter(Boolean).join(", ") || "-"}
+                {selectedCalves.length > 20 ? "..." : ""}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {message && (
         <p className={`text-sm ${message.toLowerCase().includes("error") ? "text-red-500" : "text-emerald-600"}`}>
@@ -766,13 +869,24 @@ const CreateLoad = ({ onCreated }) => {
         </p>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {wizardStep === "review" && (
+          <button
+            type="button"
+            onClick={() => setWizardStep("setup")}
+            disabled={isSubmitting}
+            className="rounded-xl border border-primary-border/50 bg-white px-4 py-2 text-sm font-medium text-primary-text transition-colors hover:bg-primary-border/10 disabled:opacity-60"
+          >
+            Back To Edit
+          </button>
+        )}
         <button
-          type="submit"
+          type={wizardStep === "setup" ? "button" : "submit"}
+          onClick={wizardStep === "setup" ? goToReviewStep : undefined}
           disabled={isSubmitting}
           className="rounded-xl border border-action-blue/80 bg-action-blue px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-action-blue/90 disabled:opacity-60"
         >
-          {isSubmitting ? "Creating..." : "Create Load Order"}
+          {wizardStep === "setup" ? "Review Load" : (isSubmitting ? "Creating..." : "Create Load Order")}
         </button>
       </div>
     </form>

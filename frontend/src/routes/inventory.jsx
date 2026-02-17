@@ -9,6 +9,7 @@ import { getInventoryByRanch, getManageCalvesByRanch, getCalfMovementHistory, up
 import { useAppContext } from "../context"
 import { formatDateMMDDYYYY, formatDateTimeMMDDYYYY } from "../utils/dateFormat"
 import { isDateInDateRange } from "../utils/dateRange"
+import { buildCalfDetailRows } from "../utils/calfDetailRows"
 import MainDataTable from "../components/shared/mainDataTable"
 import DateFilterMenu from "../components/shared/dateFilterMenu"
 import BreedSellerFilterMenu from "../components/shared/breedSellerFilterMenu"
@@ -456,6 +457,20 @@ const Inventory = () => {
 
       return rawStatus || ""
     }, [id])
+    const canManageCalf = useCallback((calf) => {
+      const routeRanchId = Number(id)
+      if (!calf || !Number.isFinite(routeRanchId)) return false
+
+      const calfOriginRanchId = Number(calf?.originRanchID)
+      const calfCurrentRanchId = Number(calf?.currentRanchID)
+      const rawStatus = String(calf?.status || "").trim().toLowerCase()
+      const isCurrentRanchMatch = Number.isFinite(calfCurrentRanchId) && calfCurrentRanchId === routeRanchId
+      const isOriginRanchMatch = Number.isFinite(calfOriginRanchId) && calfOriginRanchId === routeRanchId
+      const isOriginAndNotSent = isOriginRanchMatch && isCurrentRanchMatch
+      const isFeedingInCurrentRanch = isCurrentRanchMatch && rawStatus === "feeding"
+
+      return isOriginAndNotSent || isFeedingInCurrentRanch
+    }, [id])
 
     const filteredManageCalves = useMemo(() => {
       const bulkTokens = bulkTagSearch
@@ -474,9 +489,17 @@ const Inventory = () => {
 
         const rawDate = getCalfDate(calf)
         if (!isDateInDateRange(rawDate, dateFrom, dateTo)) return false
-        return searchModeMatch && breedMatch && sellerMatch && statusMatch
+        return searchModeMatch && breedMatch && sellerMatch && statusMatch && canManageCalf(calf)
       })
-    }, [calves, manageSearchMode, tagSearch, bulkTagSearch, manageBreed, manageSeller, manageStatus, getManageStatusKey, dateFrom, dateTo])
+    }, [calves, manageSearchMode, tagSearch, bulkTagSearch, manageBreed, manageSeller, manageStatus, getManageStatusKey, dateFrom, dateTo, canManageCalf])
+    const manageableFilteredIds = useMemo(
+      () => filteredManageCalves.filter((calf) => canManageCalf(calf)).map((calf) => calf.id),
+      [filteredManageCalves, canManageCalf]
+    )
+    const manageableFilteredIdSet = useMemo(
+      () => new Set(manageableFilteredIds),
+      [manageableFilteredIds]
+    )
     const sortedManageCalves = useMemo(
       () => sortRowsBy(
         filteredManageCalves,
@@ -569,9 +592,8 @@ const Inventory = () => {
 
     useEffect(() => {
       if (!isManageMode) return
-      const allowed = new Set(filteredManageCalves.map((calf) => calf.id))
-      setSelectedIds((prev) => prev.filter((idValue) => allowed.has(idValue)))
-    }, [isManageMode, filteredManageCalves])
+      setSelectedIds((prev) => prev.filter((idValue) => manageableFilteredIdSet.has(idValue)))
+    }, [isManageMode, manageableFilteredIdSet])
     useEffect(() => {
       setManagePage(1)
     }, [filteredManageCalves, effectiveManageRowLimit, isManageMode])
@@ -607,53 +629,16 @@ const Inventory = () => {
     }
 
     const selectedCalfInfo = movementHistory?.calf || selectedCalfDetails || null
-
-    const detailRows = selectedCalfInfo ? [
-      { label: "Visual Tag", value: selectedCalfInfo.primaryID || selectedCalf?.visualTag || "-" },
-      { label: "EID", value: selectedCalfInfo.EID || selectedCalf?.eid || "-" },
-      { label: "Back Tag", value: selectedCalfInfo.backTag || selectedCalfInfo.originalID || "-" },
-      {
-        label: "Date In",
-        value: formatDate(selectedCalfInfo.dateIn || selectedCalfInfo.placedDate)
-      },
-      {
-        label: "Breed",
-        value: selectedCalfInfo.breed
-          ? selectedCalfInfo.breed.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
-          : selectedCalf?.breed || "-"
-      },
-      {
-        label: "Sex",
-        value: selectedCalfInfo.sex
-          ? selectedCalfInfo.sex.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
-          : selectedCalf?.sex || "-"
-      },
-      { label: "Weight", value: selectedCalfInfo.weight ?? "-" },
-      { label: "Weight Bracket", value: getWeightBracketLabel(selectedCalfInfo.weight, effectiveWeightBrackets, selectedCalfInfo.breed) },
-      {
-        label: "Purchase Price",
-        value: selectedCalfInfo.purchasePrice || selectedCalfInfo.price
-          ? `$${Number(selectedCalfInfo.purchasePrice || selectedCalfInfo.price).toLocaleString()}`
-          : "-"
-      },
-      {
-        label: "Sell Price",
-        value: selectedCalfInfo.sellPrice
-          ? `$${Number(selectedCalfInfo.sellPrice).toLocaleString()}`
-          : "-"
-      },
-      { label: "Seller", value: selectedCalfInfo.seller || "-" },
-      { label: "Dairy", value: selectedCalfInfo.dairy || "-" },
-      { label: "Status", value: selectedCalfInfo.status || "-" },
-      { label: "Protein Level", value: selectedCalfInfo.proteinLevel ?? "-" },
-      { label: "Protein Test", value: selectedCalfInfo.proteinTest || "-" },
-      { label: "Death Date", value: formatDate(selectedCalfInfo.deathDate) },
-      { label: "Pre Days On Feed", value: selectedCalfInfo.preDaysOnFeed ?? "-" },
-      { label: "Days On Feed", value: calculateDaysOnFeed(selectedCalfInfo) },
-      { label: "Created By", value: selectedCalfInfo.createdBy || selectedCalfInfo.created_by || "N/A" },
-      { label: "Created At", value: formatDateTimeMMDDYYYY(selectedCalfInfo.createdAt || selectedCalfInfo.created_at, "N/A") },
-      { label: "Updated At", value: formatDateTimeMMDDYYYY(selectedCalfInfo.updatedAt || selectedCalfInfo.updated_at, "N/A") },
-    ] : []
+    const detailRows = buildCalfDetailRows({
+      calfInfo: selectedCalfInfo,
+      selectedCalf,
+      selectedCalfDetails,
+      formatDate,
+      formatDateTime: (value) => formatDateTimeMMDDYYYY(value, "N/A"),
+      calculateDaysOnFeed,
+      getWeightBracketLabel,
+      effectiveWeightBrackets,
+    })
 
     const toNumberOrNull = (value) => {
       if (value === "" || value === null || value === undefined) return null
@@ -663,6 +648,12 @@ const Inventory = () => {
 
     const saveEditedCalf = async (form) => {
       if (!selectedCalf?.id || !token) return
+      const sourceCalf = calves.find((calf) => calf.id === selectedCalf.id) || selectedCalfDetails
+      if (isManageMode && !canManageCalf(sourceCalf)) {
+        showError("This calf cannot be edited from this ranch.")
+        setIsEditing(false)
+        return
+      }
       try {
         setIsSaving(true)
         const payload = {
@@ -692,6 +683,11 @@ const Inventory = () => {
     }
 
     const toggleSelectRow = (calfId) => {
+      const targetCalf = calves.find((calf) => calf.id === calfId)
+      if (!canManageCalf(targetCalf)) {
+        showError("Only calves allowed for this ranch can be selected.")
+        return
+      }
       setSelectedIds((prev) => (
         prev.includes(calfId)
           ? prev.filter((idValue) => idValue !== calfId)
@@ -700,12 +696,15 @@ const Inventory = () => {
     }
 
     const toggleSelectAll = () => {
-      const filteredIds = filteredManageCalves.map((calf) => calf.id)
-      const allSelected = filteredIds.length > 0 && filteredIds.every((idValue) => selectedIds.includes(idValue))
-      setSelectedIds(allSelected ? [] : filteredIds)
+      const allSelected = manageableFilteredIds.length > 0 && manageableFilteredIds.every((idValue) => selectedIds.includes(idValue))
+      setSelectedIds(allSelected ? [] : manageableFilteredIds)
     }
 
     const openManageEdit = (calf) => {
+      if (!canManageCalf(calf)) {
+        showError("This calf cannot be edited from this ranch.")
+        return
+      }
       setSelectedCalf({ id: calf.id, visualTag: calf.primaryID || "-" })
       setSelectedCalfDetails(calf)
       setIsEditing(true)
@@ -798,10 +797,20 @@ const Inventory = () => {
         normalizedValue = String(bulkValue).trim()
       }
 
+      const editableSelectedIds = selectedIds.filter((calfId) => {
+        const calf = calves.find((item) => item.id === calfId)
+        return canManageCalf(calf)
+      })
+      const skippedCount = selectedIds.length - editableSelectedIds.length
+      if (editableSelectedIds.length === 0) {
+        setManageMessage("No editable calves selected for this ranch.")
+        return
+      }
+
       setBulkLoading(true)
       setManageMessage("")
       const previousSnapshotById = new Map()
-      selectedIds.forEach((calfId) => {
+      editableSelectedIds.forEach((calfId) => {
         const previous = calves.find((calf) => calf.id === calfId)
         if (previous) previousSnapshotById.set(calfId, { ...previous })
       })
@@ -809,9 +818,10 @@ const Inventory = () => {
       let updatedCount = 0
       let failedCount = 0
       const updatedMap = new Map()
+      const editableSelectedIdSet = new Set(editableSelectedIds)
 
       try {
-        for (const calfId of selectedIds) {
+        for (const calfId of editableSelectedIds) {
           try {
             const updated = await updateCalf(calfId, { [fieldToUpdate]: normalizedValue }, token)
             updatedMap.set(calfId, updated)
@@ -831,7 +841,7 @@ const Inventory = () => {
           return [merged]
         }))
 
-        setSelectedIds((prev) => prev.filter((idValue) => !updatedMap.has(idValue)))
+        setSelectedIds((prev) => prev.filter((idValue) => manageableFilteredIdSet.has(idValue) && !editableSelectedIdSet.has(idValue)))
         if (updatedMap.size > 0) {
           setLastBulkChange({
             field: fieldToUpdate,
@@ -842,10 +852,11 @@ const Inventory = () => {
           })
           setLastDeletedCalves([])
         }
-        if (failedCount > 0 && updatedCount === 0) {
+        if (failedCount > 0 && updatedCount === 0 && skippedCount === 0) {
           setManageMessage(`Bulk edit failed. Failed: ${failedCount}. Check backend logs or API error details.`)
         } else {
-          setManageMessage(`Bulk edit complete. Updated: ${updatedCount}, Failed: ${failedCount}.`)
+          const skippedText = skippedCount > 0 ? `, Skipped: ${skippedCount}` : ""
+          setManageMessage(`Bulk edit complete. Updated: ${updatedCount}, Failed: ${failedCount}${skippedText}.`)
         }
       } finally {
         setBulkLoading(false)
@@ -978,10 +989,19 @@ const Inventory = () => {
 
     const handleBulkDeleteSelected = async () => {
       if (!token || selectedIds.length === 0 || bulkLoading) return
+      const editableSelectedIds = selectedIds.filter((calfId) => {
+        const calf = calves.find((item) => item.id === calfId)
+        return canManageCalf(calf)
+      })
+      const skippedCount = selectedIds.length - editableSelectedIds.length
+      if (editableSelectedIds.length === 0) {
+        setManageMessage("No editable calves selected for this ranch.")
+        return
+      }
 
       const confirmed = await confirmAction({
         title: "Delete Calves",
-        message: `Delete ${selectedIds.length} selected calves? This action cannot be undone.`,
+        message: `Delete ${editableSelectedIds.length} selected calves? This action cannot be undone.`,
         confirmText: "YES",
         cancelText: "NO",
       })
@@ -989,14 +1009,15 @@ const Inventory = () => {
 
       setBulkLoading(true)
       setManageMessage("")
-      const deletedCandidates = calves.filter((calf) => selectedIds.includes(calf.id))
+      const deletedCandidates = calves.filter((calf) => editableSelectedIds.includes(calf.id))
 
       let deletedCount = 0
       let failedCount = 0
       const deletedSet = new Set()
+      const editableSelectedIdSet = new Set(editableSelectedIds)
 
       try {
-        for (const calfId of selectedIds) {
+        for (const calfId of editableSelectedIds) {
           try {
             await deleteCalf(calfId, token)
             deletedSet.add(calfId)
@@ -1010,17 +1031,18 @@ const Inventory = () => {
 
         if (deletedSet.size > 0) {
           setCalves((prev) => prev.filter((calf) => !deletedSet.has(calf.id)))
-          setSelectedIds((prev) => prev.filter((idValue) => !deletedSet.has(idValue)))
+          setSelectedIds((prev) => prev.filter((idValue) => manageableFilteredIdSet.has(idValue) && !editableSelectedIdSet.has(idValue)))
           setLastDeletedCalves(deletedCandidates.filter((calf) => deletedSet.has(calf.id)))
           setLastBulkChange(null)
         }
 
-        if (failedCount > 0 && deletedCount === 0) {
+        if (failedCount > 0 && deletedCount === 0 && skippedCount === 0) {
           setManageMessage(`Bulk delete failed. Failed: ${failedCount}. Check backend logs or API error details.`)
           showError(`Bulk delete failed. Failed: ${failedCount}.`)
         } else {
-          setManageMessage(`Bulk delete complete. Deleted: ${deletedCount}, Failed: ${failedCount}.`)
-          showSuccess(`Bulk delete complete. Deleted: ${deletedCount}, Failed: ${failedCount}.`, "Deleted")
+          const skippedText = skippedCount > 0 ? `, Skipped: ${skippedCount}` : ""
+          setManageMessage(`Bulk delete complete. Deleted: ${deletedCount}, Failed: ${failedCount}${skippedText}.`)
+          showSuccess(`Bulk delete complete. Deleted: ${deletedCount}, Failed: ${failedCount}${skippedText}.`, "Deleted")
         }
       } finally {
         setBulkLoading(false)
@@ -1029,6 +1051,12 @@ const Inventory = () => {
 
     const handleDeleteCalf = async () => {
       if (!selectedCalf?.id || !token) return
+      const sourceCalf = calves.find((calf) => calf.id === selectedCalf.id) || selectedCalfDetails
+      if (isManageMode && !canManageCalf(sourceCalf)) {
+        showError("This calf cannot be deleted from this ranch.")
+        setIsEditing(false)
+        return
+      }
       const confirmed = await confirmAction({
         title: "Delete Calf",
         message: `Delete calf "${selectedCalf.visualTag || selectedCalf.id}"? This action cannot be undone.`,
@@ -1419,8 +1447,9 @@ const Inventory = () => {
                     <th className="px-3 py-2 text-left text-xs">
                       <input
                         type="checkbox"
-                        checked={filteredManageCalves.length > 0 && filteredManageCalves.every((calf) => selectedIds.includes(calf.id))}
+                        checked={manageableFilteredIds.length > 0 && manageableFilteredIds.every((idValue) => selectedIds.includes(idValue))}
                         onChange={toggleSelectAll}
+                        disabled={manageableFilteredIds.length === 0}
                       />
                     </th>
                     <th className="px-3 py-2 text-left text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort(setManageSort, "visualTag")}>Visual Tag <span>{manageSort.key === "visualTag" ? (manageSort.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
@@ -1434,30 +1463,34 @@ const Inventory = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleManageCalves.map((calf) => (
-                    <tr
-                      key={calf.id}
-                      className="border-t border-primary-border/20 hover:bg-primary-border/5 cursor-pointer"
-                      onClick={() => openManageEdit(calf)}
-                    >
-                      <td className="px-3 py-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.includes(calf.id)}
-                          onClick={(event) => event.stopPropagation()}
-                          onChange={() => toggleSelectRow(calf.id)}
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-sm">{calf.primaryID || "-"}</td>
-                      <td className="px-3 py-2 text-sm">{calf.EID || "-"}</td>
-                      <td className="px-3 py-2 text-sm">{formatDateCell(calf.dateIn || calf.placedDate)}</td>
-                      <td className="px-3 py-2 text-sm">{calf.breed || "-"}</td>
-                      <td className="px-3 py-2 text-sm">{calf.price ?? calf.purchasePrice ?? "-"}</td>
-                      <td className="px-3 py-2 text-sm">{calf.sellPrice ?? "-"}</td>
-                      <td className="px-3 py-2 text-sm">{manageStatusBadge(calf)}</td>
-                      <td className="px-3 py-2 text-sm">{formatDateMMDDYYYY(calf.deathDate, "N/A")}</td>
-                    </tr>
-                  ))}
+                  {visibleManageCalves.map((calf) => {
+                    const canEditRow = canManageCalf(calf)
+                    return (
+                      <tr
+                        key={calf.id}
+                        className={`border-t border-primary-border/20 ${canEditRow ? "cursor-pointer hover:bg-primary-border/5" : "cursor-not-allowed bg-slate-50/60"}`}
+                        onClick={() => openManageEdit(calf)}
+                      >
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(calf.id)}
+                            disabled={!canEditRow}
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={() => toggleSelectRow(calf.id)}
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-sm">{calf.primaryID || "-"}</td>
+                        <td className="px-3 py-2 text-sm">{calf.EID || "-"}</td>
+                        <td className="px-3 py-2 text-sm">{formatDateCell(calf.dateIn || calf.placedDate)}</td>
+                        <td className="px-3 py-2 text-sm">{calf.breed || "-"}</td>
+                        <td className="px-3 py-2 text-sm">{calf.price ?? calf.purchasePrice ?? "-"}</td>
+                        <td className="px-3 py-2 text-sm">{calf.sellPrice ?? "-"}</td>
+                        <td className="px-3 py-2 text-sm">{manageStatusBadge(calf)}</td>
+                        <td className="px-3 py-2 text-sm">{formatDateMMDDYYYY(calf.deathDate, "N/A")}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1546,6 +1579,19 @@ const Inventory = () => {
             <MainDataTable
               title="Inventory"
               rows={tableRows}
+              emptyState={(
+                <div className="flex flex-col items-center gap-2 py-1">
+                  <p className="text-sm font-medium text-primary-text">No calves in inventory yet.</p>
+                  <p className="text-xs text-secondary">Create calves to start tracking inventory and pricing.</p>
+                  <button
+                    type="button"
+                    className="mt-1 rounded-lg border border-action-blue/80 bg-action-blue px-3 py-1.5 text-xs font-semibold text-white hover:bg-action-blue/90"
+                    onClick={() => navigate(`/ranches/${id}/add-calves`)}
+                  >
+                    Create Calves
+                  </button>
+                </div>
+              )}
               enablePagination
               pageSize={mainRowLimit}
               defaultSortKey="visualTag"

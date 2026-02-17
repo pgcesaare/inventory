@@ -18,6 +18,17 @@ const weightCategoryEntry = Joi.object({
   breeds: Joi.array().items(Joi.string().trim().allow("")).allow(null),
 })
 const weightCategories = Joi.array().items(weightCategoryEntry).allow(null)
+const pricePeriodEntry = Joi.object({
+  key: Joi.string().allow(null, ""),
+  label: Joi.string().allow(null, ""),
+  startDate: Joi.date().allow(null, ""),
+  endDate: Joi.date().allow(null, ""),
+  purchasePrice: Joi.number().allow(null),
+  sellPrice: Joi.number().allow(null),
+  layoutMode: Joi.string().valid('weight', 'single').allow(null, ""),
+  sheetData: Joi.object().unknown(true).allow(null),
+})
+const pricePeriods = Joi.array().items(pricePeriodEntry).allow(null)
 
 const createRanchesSchema = Joi.object({
 
@@ -29,7 +40,8 @@ const createRanchesSchema = Joi.object({
     manager: manager.allow(null, ""),
     color: color,
     createdBy: createdBy.allow(null, ""),
-    weightCategories: weightCategories
+    weightCategories: weightCategories,
+    pricePeriods: pricePeriods
 
 })
 
@@ -48,7 +60,8 @@ const updateRanchesSchema = Joi.object({
     state: state,
     manager: manager.allow(null, ""),
     color: color,
-    weightCategories: weightCategories
+    weightCategories: weightCategories,
+    pricePeriods: pricePeriods
 
 })
 

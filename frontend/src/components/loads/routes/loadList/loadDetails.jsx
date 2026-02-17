@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useParams } from "react-router-dom"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import * as XLSX from "xlsx"
@@ -7,7 +8,7 @@ import { Calendar, ClipboardList, Truck, MapPinned, PackageCheck, Download, Sear
 import { useToken } from "../../../../api/useToken"
 import { useAppContext } from "../../../../context"
 import { getRanches } from "../../../../api/ranches"
-import { deleteLoad, updateLoad } from "../../../../api/loads"
+import { deleteLoad, updateLoad, updateLoadCalfArrivalStatus } from "../../../../api/loads"
 import StyledDateInput from "../../../shared/styledDateInput"
 import { formatDateMMDDYYYY, formatDateTimeMMDDYYYY } from "../../../../utils/dateFormat"
 
@@ -35,9 +36,138 @@ const toDateInput = (value) => {
   return parsed.isValid() ? parsed.format("YYYY-MM-DD") : ""
 }
 
-const LoadDetails = ({ load, onUpdated, onDeleted }) => {
+const parseDateToLocalDayStart = (value) => {
+  if (!value) return null
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null
+    return new Date(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate())
+  }
+
+  const raw = String(value).trim()
+  const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (dateOnlyMatch) {
+    const year = Number(dateOnlyMatch[1])
+    const month = Number(dateOnlyMatch[2]) - 1
+    const day = Number(dateOnlyMatch[3])
+    const localDate = new Date(year, month, day)
+    if (
+      localDate.getFullYear() === year &&
+      localDate.getMonth() === month &&
+      localDate.getDate() === day
+    ) {
+      return localDate
+    }
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
+}
+
+const calculateDaysOnFeed = (calf) => {
+  const intakeRaw = calf?.dateIn || calf?.placedDate
+  const intakeStart = parseDateToLocalDayStart(intakeRaw)
+  const preDaysRaw = Number(calf?.preDaysOnFeed)
+  const preDays = Number.isFinite(preDaysRaw) ? preDaysRaw : 0
+
+  if (!intakeStart) {
+    return preDays > 0 ? preDays : 0
+  }
+
+  const today = new Date()
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const msDiff = todayStart.getTime() - intakeStart.getTime()
+  const intakeDays = Math.floor(msDiff / (1000 * 60 * 60 * 24)) + 1
+  const safeIntakeDays = Math.max(intakeDays, 1)
+
+  return safeIntakeDays + preDays
+}
+
+const getLoadCalfDaysOnFeed = (calf) => {
+  const snapshotDays = Number(calf?.daysOnFeedAtShipment)
+  if (Number.isFinite(snapshotDays) && snapshotDays >= 0) return snapshotDays
+  return calculateDaysOnFeed(calf)
+}
+
+const CALF_ARRIVAL_STATUS_META = {
+  doa: { key: "doa", shortLabel: "DOA", fullLabel: "Dead On Arrival" },
+  issue: { key: "issue", shortLabel: "Issue", fullLabel: "Issue" },
+  not_in_load: { key: "not_in_load", shortLabel: "Not In Load", fullLabel: "Not In Load" },
+}
+
+const CALF_ARRIVAL_ACTIONS = [
+  {
+    key: "in_load",
+    shortLabel: "In Load",
+    fullLabel: "In Load",
+    payload: null,
+    activeClassName: "border-emerald-300 bg-emerald-100 text-emerald-800",
+    inactiveClassName: "border-emerald-200/70 text-emerald-700 hover:bg-emerald-50",
+  },
+  {
+    key: "doa",
+    shortLabel: "DOA",
+    fullLabel: "Dead On Arrival",
+    payload: "doa",
+    activeClassName: "border-red-300 bg-red-100 text-red-700",
+    inactiveClassName: "border-red-200/70 text-red-700 hover:bg-red-50",
+  },
+  {
+    key: "issue",
+    shortLabel: "Issue",
+    fullLabel: "Issue",
+    payload: "issue",
+    activeClassName: "border-amber-300 bg-amber-100 text-amber-800",
+    inactiveClassName: "border-amber-200/70 text-amber-700 hover:bg-amber-50",
+  },
+  {
+    key: "not_in_load",
+    shortLabel: "Not In Load",
+    fullLabel: "Not In Load",
+    payload: "not_in_load",
+    activeClassName: "border-slate-300 bg-slate-200 text-slate-800",
+    inactiveClassName: "border-slate-200/80 text-slate-700 hover:bg-slate-100",
+  },
+]
+
+const UNDO_ARRIVAL_STATUS_WINDOW_MS = 8000
+
+const CALF_ARRIVAL_STATUS_CARDS = [
+  { key: "in_load", label: "In Load", className: "border-emerald-200 bg-emerald-50/60" },
+  { key: "doa", label: "DOA", className: "border-red-200 bg-red-50/70" },
+  { key: "issue", label: "Issue", className: "border-amber-200 bg-amber-50/80" },
+  { key: "not_in_load", label: "Not In Load", className: "border-slate-200 bg-slate-100/70" },
+]
+
+const normalizeCalfArrivalStatus = (value) => {
+  const normalized = String(value ?? "").toLowerCase().trim().replace(/[\s-]+/g, "_")
+  return CALF_ARRIVAL_STATUS_META[normalized] ? normalized : null
+}
+
+const getCalfArrivalStatusKey = (value) => normalizeCalfArrivalStatus(value) || "in_load"
+
+const getCalfArrivalStatusLabel = (value) => {
+  const normalized = normalizeCalfArrivalStatus(value)
+  if (!normalized) return "In Load"
+  return CALF_ARRIVAL_STATUS_META[normalized]?.fullLabel || "In Load"
+}
+
+const getCalfArrivalStatusShortLabel = (value) => {
+  const normalized = normalizeCalfArrivalStatus(value)
+  if (!normalized) return "In Load"
+  return CALF_ARRIVAL_STATUS_META[normalized]?.shortLabel || "In Load"
+}
+
+const isCalfCountedInLoadSummary = (calf) => {
+  const statusKey = getCalfArrivalStatusKey(calf?.arrivalStatus)
+  return statusKey === "in_load" || statusKey === "issue"
+}
+
+const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onInitialActionHandled }) => {
+  const { id: routeRanchId } = useParams()
   const token = useToken()
-  const { showSuccess, showError, confirmAction } = useAppContext()
+  const { ranch, showSuccess, showError, confirmAction } = useAppContext()
   const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" })
   const [breedFilter, setBreedFilter] = useState("")
   const [filterOpen, setFilterOpen] = useState(false)
@@ -51,6 +181,10 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
   const [isEditMode, setIsEditMode] = useState(false)
   const [isSavingEdit, setIsSavingEdit] = useState(false)
   const [isDeletingLoad, setIsDeletingLoad] = useState(false)
+  const [afterArrivalNotesDraft, setAfterArrivalNotesDraft] = useState("")
+  const [isSavingAfterArrivalNotes, setIsSavingAfterArrivalNotes] = useState(false)
+  const [updatingArrivalStatusByCalfId, setUpdatingArrivalStatusByCalfId] = useState({})
+  const [undoArrivalStatusAction, setUndoArrivalStatusAction] = useState(null)
   const [destinationOptions, setDestinationOptions] = useState([])
   const [editForm, setEditForm] = useState({
     destinationRanchID: "",
@@ -58,10 +192,10 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
     departureDate: "",
     arrivalDate: "",
     trucking: "",
-    notes: "",
   })
   const filterRef = useRef(null)
   const searchRef = useRef(null)
+  const undoArrivalStatusTimeoutRef = useRef(null)
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -76,6 +210,28 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
+
+  useEffect(() => {
+    return () => {
+      if (undoArrivalStatusTimeoutRef.current) {
+        clearTimeout(undoArrivalStatusTimeoutRef.current)
+        undoArrivalStatusTimeoutRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    setUndoArrivalStatusAction(null)
+    if (undoArrivalStatusTimeoutRef.current) {
+      clearTimeout(undoArrivalStatusTimeoutRef.current)
+      undoArrivalStatusTimeoutRef.current = null
+    }
+  }, [load?.id])
+
+  useEffect(() => {
+    setAfterArrivalNotesDraft(String(load?.afterArrivalNotes || ""))
+    setIsSavingAfterArrivalNotes(false)
+  }, [load?.id, load?.afterArrivalNotes])
 
   const breedOptions = useMemo(
     () => [...new Set((load?.calves || []).map((calf) => calf?.breed).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))),
@@ -130,9 +286,14 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
       return String(value).toLowerCase()
     }
 
+    const accessor = {
+      daysOnFeed: (row) => getLoadCalfDaysOnFeed(row),
+      dateIn: (row) => row?.placedDate || row?.dateIn || null,
+    }[sortConfig.key] || ((row) => row?.[sortConfig.key])
+
     return [...filteredCalves].sort((a, b) => {
-      const aValue = normalize(a?.[sortConfig.key])
-      const bValue = normalize(b?.[sortConfig.key])
+      const aValue = normalize(accessor(a))
+      const bValue = normalize(accessor(b))
       if (aValue < bValue) return -1 * factor
       if (aValue > bValue) return 1 * factor
       return 0
@@ -158,6 +319,80 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
 
   const pageStart = sortedCalves.length === 0 ? 0 : (currentPage - 1) * effectiveRowLimit + 1
   const pageEnd = Math.min(currentPage * effectiveRowLimit, sortedCalves.length)
+  const averageDaysOnFeedAllLoad = useMemo(() => {
+    const calves = Array.isArray(load?.calves) ? load.calves : []
+    if (calves.length === 0) return null
+    const totalDays = calves.reduce((sum, calf) => sum + getLoadCalfDaysOnFeed(calf), 0)
+    return totalDays / calves.length
+  }, [load?.calves])
+  const averageDaysOnFeedLabel = useMemo(() => {
+    if (averageDaysOnFeedAllLoad === null) return "-"
+    return new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 1,
+    }).format(averageDaysOnFeedAllLoad)
+  }, [averageDaysOnFeedAllLoad])
+  const effectiveCalvesForLoadSummary = useMemo(() => {
+    const calves = Array.isArray(load?.calves) ? load.calves : []
+    return calves.filter((calf) => isCalfCountedInLoadSummary(calf))
+  }, [load?.calves])
+  const averageDaysOnFeedLoadSummary = useMemo(() => {
+    if (effectiveCalvesForLoadSummary.length === 0) return null
+    const totalDays = effectiveCalvesForLoadSummary.reduce((sum, calf) => sum + getLoadCalfDaysOnFeed(calf), 0)
+    return totalDays / effectiveCalvesForLoadSummary.length
+  }, [effectiveCalvesForLoadSummary])
+  const averageDaysOnFeedLoadSummaryLabel = useMemo(() => {
+    if (averageDaysOnFeedLoadSummary === null) return "-"
+    return new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 1,
+    }).format(averageDaysOnFeedLoadSummary)
+  }, [averageDaysOnFeedLoadSummary])
+  const breedSummaryRows = useMemo(() => {
+    const calves = effectiveCalvesForLoadSummary
+    const grouped = new Map()
+
+    calves.forEach((calf) => {
+      const rawBreed = String(calf?.breed || "").trim()
+      const breedLabel = rawBreed || "Unspecified"
+      const current = grouped.get(breedLabel) || {
+        breed: breedLabel,
+        totalCalves: 0,
+        totalDaysOnFeed: 0,
+      }
+
+      current.totalCalves += 1
+      current.totalDaysOnFeed += getLoadCalfDaysOnFeed(calf)
+      grouped.set(breedLabel, current)
+    })
+
+    return Array.from(grouped.values())
+      .map((row) => ({
+        ...row,
+        averageDaysOnFeed: row.totalCalves > 0 ? row.totalDaysOnFeed / row.totalCalves : 0,
+      }))
+      .sort((a, b) => String(a.breed).localeCompare(String(b.breed)))
+  }, [effectiveCalvesForLoadSummary])
+  const totalBreedSummaryCalves = useMemo(
+    () => breedSummaryRows.reduce((sum, row) => sum + Number(row.totalCalves || 0), 0),
+    [breedSummaryRows]
+  )
+  const arrivalStatusSummary = useMemo(() => {
+    const calves = Array.isArray(load?.calves) ? load.calves : []
+    const summary = {
+      in_load: 0,
+      doa: 0,
+      issue: 0,
+      not_in_load: 0,
+    }
+
+    calves.forEach((calf) => {
+      const key = getCalfArrivalStatusKey(calf?.arrivalStatus)
+      summary[key] = Number(summary[key] || 0) + 1
+    })
+
+    return summary
+  }, [load?.calves])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -176,9 +411,32 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
       departureDate: toDateInput(load.departureDate || load.shippedOutDate),
       arrivalDate: toDateInput(load.arrivalDate),
       trucking: load.trucking || "",
-      notes: load.notes || "",
     })
   }, [load])
+
+  useEffect(() => {
+    if (initialAction !== "edit" || !load?.id || isEditMode || !token) return
+    let cancelled = false
+
+    const openEditFromQuickAction = async () => {
+      try {
+        const ranches = await getRanches(token)
+        if (cancelled) return
+        setDestinationOptions((Array.isArray(ranches) ? ranches : []).filter((ranch) => Number(ranch.id) !== Number(load.originRanchID)))
+        setIsEditMode(true)
+      } catch (error) {
+        if (cancelled) return
+        showError(error?.response?.data?.message || "Could not load edit options for this load.")
+      } finally {
+        if (!cancelled && onInitialActionHandled) onInitialActionHandled()
+      }
+    }
+
+    openEditFromQuickAction()
+    return () => {
+      cancelled = true
+    }
+  }, [initialAction, isEditMode, load?.id, load?.originRanchID, onInitialActionHandled, showError, token])
 
   if (!load) {
     return <p className="text-sm text-secondary">Select a load to view details.</p>
@@ -187,7 +445,32 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
   const destinationName = load.destination?.name || load.shippedTo || "-"
   const originName = load.origin?.name || "-"
   const shippedOutDate = load.shippedOutDate || load.departureDate
-  const isPending = !load.arrivalDate
+  const activeRanchIdNumber = Number(routeRanchId || ranch?.id)
+  const canDeleteLoad = Number.isFinite(activeRanchIdNumber) && Number(load.originRanchID) === activeRanchIdNumber
+  const canEditCalfArrivalStatus = (
+    Number.isFinite(activeRanchIdNumber) &&
+    Number.isFinite(Number(load.destinationRanchID)) &&
+    String(load.status || "").toLowerCase() === "arrived" &&
+    (
+      Number(load.originRanchID) === activeRanchIdNumber ||
+      Number(load.destinationRanchID) === activeRanchIdNumber
+    )
+  )
+  const normalizedStatus = String(load.status || "").toLowerCase()
+  const canEditAfterArrivalNotes = (
+    Number.isFinite(activeRanchIdNumber) &&
+    normalizedStatus === "arrived" &&
+    (
+      Number(load.originRanchID) === activeRanchIdNumber ||
+      Number(load.destinationRanchID) === activeRanchIdNumber
+    )
+  )
+  const statusMeta = {
+    draft: { label: "Draft", className: "bg-slate-100 text-slate-700 border border-slate-200" },
+    in_transit: { label: "In Transit", className: "bg-amber-100 text-amber-700 border border-amber-200" },
+    arrived: { label: "Arrived", className: "bg-emerald-100 text-emerald-700 border border-emerald-200" },
+    canceled: { label: "Canceled", className: "bg-red-100 text-red-700 border border-red-200" },
+  }[normalizedStatus] || { label: "In Transit", className: "bg-amber-100 text-amber-700 border border-amber-200" }
 
   const toggleSort = (key) => {
     setSortConfig((prev) => (
@@ -205,9 +488,10 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
       "Shipped Out Date": formatDate(shippedOutDate),
       "Arrival Date": formatDate(load.arrivalDate),
       Trucking: load.trucking || "",
-      Notes: load.notes || "",
+      "Before Load Notes": load.notes || "",
+      "After Arrival Notes": load.afterArrivalNotes || "",
       "Head Count": load.headCount || 0,
-      Status: isPending ? "In transit" : "Arrived",
+      Status: statusMeta.label,
     }]
 
     const calfRows = (load.calves || []).map((calf) => ({
@@ -219,7 +503,9 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
       Sex: calf.sex || "",
       Seller: calf.seller || "",
       Status: calf.status || "",
+      "Load Arrival Status": getCalfArrivalStatusLabel(calf.arrivalStatus),
       "Date In": formatDate(calf.placedDate || calf.dateIn),
+      "Days On Feed At Shipment": getLoadCalfDaysOnFeed(calf),
       "Purchase Price": calf.price ?? calf.purchasePrice ?? "",
       "Sell Price": calf.sellPrice ?? "",
       "Shipped Out Date": formatDate(calf.shippedOutDate),
@@ -281,7 +567,6 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
         departureDate: editForm.departureDate || null,
         arrivalDate: editForm.arrivalDate || null,
         trucking: editForm.trucking || null,
-        notes: editForm.notes || null,
       }, token)
 
       showSuccess("Load updated successfully.", "Saved")
@@ -294,8 +579,14 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
     }
   }
 
+  const isCustomDestinationSelected = !editForm.destinationRanchID
+
   const handleDeleteLoad = async () => {
     if (!load?.id || !token) return
+    if (!canDeleteLoad) {
+      showError("You can only delete loads shipped from this ranch.")
+      return
+    }
 
     const confirmed = await confirmAction({
       title: "Delete Load",
@@ -317,6 +608,153 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
     }
   }
 
+  const handleSaveAfterArrivalNotes = async () => {
+    if (!load?.id || !token) return
+    if (!canEditAfterArrivalNotes) {
+      if (!Number.isFinite(activeRanchIdNumber)) {
+        showError("Select an active ranch to edit after-arrival notes.")
+      } else if (normalizedStatus !== "arrived") {
+        showError("Load must be marked as Arrived before adding after-arrival notes.")
+      } else {
+        showError("Only origin or destination ranch can edit after-arrival notes.")
+      }
+      return
+    }
+
+    const nextNotes = String(afterArrivalNotesDraft || "").trim()
+    const currentNotes = String(load.afterArrivalNotes || "").trim()
+    if (nextNotes === currentNotes) return
+    if (nextNotes.length > 255) {
+      showError("After-arrival notes cannot exceed 255 characters.")
+      return
+    }
+
+    try {
+      setIsSavingAfterArrivalNotes(true)
+      await updateLoad(load.id, {
+        afterArrivalNotes: nextNotes || null,
+      }, token)
+      showSuccess("After-arrival notes saved.", "Saved")
+      if (onUpdated) onUpdated()
+    } catch (error) {
+      showError(error?.response?.data?.message || "Could not save after-arrival notes.")
+    } finally {
+      setIsSavingAfterArrivalNotes(false)
+    }
+  }
+
+  const clearUndoArrivalStatusAction = () => {
+    if (undoArrivalStatusTimeoutRef.current) {
+      clearTimeout(undoArrivalStatusTimeoutRef.current)
+      undoArrivalStatusTimeoutRef.current = null
+    }
+    setUndoArrivalStatusAction(null)
+  }
+
+  const scheduleUndoArrivalStatusAction = (nextAction) => {
+    if (undoArrivalStatusTimeoutRef.current) {
+      clearTimeout(undoArrivalStatusTimeoutRef.current)
+    }
+    setUndoArrivalStatusAction(nextAction)
+    undoArrivalStatusTimeoutRef.current = setTimeout(() => {
+      setUndoArrivalStatusAction(null)
+      undoArrivalStatusTimeoutRef.current = null
+    }, UNDO_ARRIVAL_STATUS_WINDOW_MS)
+  }
+
+  const handleUndoArrivalStatusChange = async () => {
+    if (!undoArrivalStatusAction || !load?.id || !token) return
+    if (!canEditCalfArrivalStatus) {
+      if (!Number.isFinite(activeRanchIdNumber)) {
+        showError("Select an active ranch to edit calf load status.")
+      } else if (String(load.status || "").toLowerCase() !== "arrived") {
+        showError("Load must be marked as Arrived before editing calf load status.")
+      } else if (!Number.isFinite(Number(load.destinationRanchID))) {
+        showError("Calf load status actions are available only for ranch-to-ranch loads.")
+      } else {
+        showError("Only origin or destination ranch can edit calf load status.")
+      }
+      return
+    }
+    const { calfID, calfLabel, previousStatus } = undoArrivalStatusAction
+    const numericCalfId = Number(calfID)
+    if (!Number.isFinite(numericCalfId)) return
+
+    try {
+      setUpdatingArrivalStatusByCalfId((prev) => ({ ...prev, [numericCalfId]: true }))
+      await updateLoadCalfArrivalStatus(load.id, {
+        calfID: numericCalfId,
+        actingRanchID: activeRanchIdNumber,
+        arrivalStatus: previousStatus,
+      }, token)
+      showSuccess(`Calf ${calfLabel} reverted to ${getCalfArrivalStatusShortLabel(previousStatus)}.`, "Undo")
+      clearUndoArrivalStatusAction()
+      if (onUpdated) onUpdated()
+    } catch (error) {
+      showError(error?.response?.data?.message || "Could not undo calf arrival status.")
+    } finally {
+      setUpdatingArrivalStatusByCalfId((prev) => ({ ...prev, [numericCalfId]: false }))
+    }
+  }
+
+  const handleUpdateCalfArrivalStatus = async (calf, actionKey) => {
+    if (!load?.id || !token || !calf?.id) return
+    if (!canEditCalfArrivalStatus) {
+      if (!Number.isFinite(activeRanchIdNumber)) {
+        showError("Select an active ranch to edit calf load status.")
+      } else if (String(load.status || "").toLowerCase() !== "arrived") {
+        showError("Load must be marked as Arrived before editing calf load status.")
+      } else if (!Number.isFinite(Number(load.destinationRanchID))) {
+        showError("Calf load status actions are available only for ranch-to-ranch loads.")
+      } else {
+        showError("Only origin or destination ranch can edit calf load status.")
+      }
+      return
+    }
+    const calfId = Number(calf.id)
+    if (!Number.isFinite(calfId)) return
+
+    const selectedAction = CALF_ARRIVAL_ACTIONS.find((action) => action.key === actionKey)
+    if (!selectedAction) return
+    const previousStatus = normalizeCalfArrivalStatus(calf.arrivalStatus)
+    const nextStatus = selectedAction.payload
+    if ((previousStatus || null) === (nextStatus || null)) return
+
+    if (selectedAction.key === "doa") {
+      const confirmed = await confirmAction({
+        title: "Confirm DOA",
+        message: `Mark calf ${calf.primaryID || calf.id} as Dead On Arrival (DOA)?`,
+        confirmText: "YES",
+        cancelText: "NO",
+      })
+      if (!confirmed) return
+    }
+
+    try {
+      setUpdatingArrivalStatusByCalfId((prev) => ({ ...prev, [calfId]: true }))
+      await updateLoadCalfArrivalStatus(load.id, {
+        calfID: calfId,
+        actingRanchID: activeRanchIdNumber,
+        arrivalStatus: nextStatus,
+      }, token)
+      if (selectedAction.key === "in_load") {
+        showSuccess(`Calf ${calf.primaryID || calf.id} set back to In Load.`, "Saved")
+      } else {
+        showSuccess(`Calf ${calf.primaryID || calf.id} marked as ${selectedAction.shortLabel}.`, "Saved")
+      }
+      scheduleUndoArrivalStatusAction({
+        calfID: calfId,
+        calfLabel: calf.primaryID || calf.id,
+        previousStatus: previousStatus || null,
+      })
+      if (onUpdated) onUpdated()
+    } catch (error) {
+      showError(error?.response?.data?.message || "Could not update calf arrival status.")
+    } finally {
+      setUpdatingArrivalStatusByCalfId((prev) => ({ ...prev, [calfId]: false }))
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-2xl border border-primary-border/30 bg-primary-border/5 p-4">
@@ -329,25 +767,23 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
           </div>
           <div className="flex items-center gap-2">
             <span
-              className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                isPending
-                  ? "bg-amber-100 text-amber-700 border border-amber-200"
-                  : "bg-emerald-100 text-emerald-700 border border-emerald-200"
-              }`}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusMeta.className}`}
             >
-              {isPending ? "In transit" : "Arrived"}
+              {statusMeta.label}
             </span>
             {!isEditMode && (
               <>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs text-red-700 hover:bg-red-100 disabled:opacity-60"
-                  onClick={handleDeleteLoad}
-                  disabled={isDeletingLoad}
-                >
-                  <Trash2 className="size-3.5" />
-                  {isDeletingLoad ? "Deleting..." : "Delete Load"}
-                </button>
+                {canDeleteLoad && (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs text-red-700 hover:bg-red-100 disabled:opacity-60"
+                    onClick={handleDeleteLoad}
+                    disabled={isDeletingLoad}
+                  >
+                    <Trash2 className="size-3.5" />
+                    {isDeletingLoad ? "Deleting..." : "Delete Load"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-primary-border/40 bg-white px-2.5 py-1.5 text-xs hover:bg-primary-border/10"
@@ -394,7 +830,14 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
               <select
                 className="mt-1 w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs"
                 value={editForm.destinationRanchID}
-                onChange={(event) => setEditForm((prev) => ({ ...prev, destinationRanchID: event.target.value }))}
+                onChange={(event) => {
+                  const nextDestinationRanchID = event.target.value
+                  setEditForm((prev) => ({
+                    ...prev,
+                    destinationRanchID: nextDestinationRanchID,
+                    destinationName: nextDestinationRanchID ? "" : prev.destinationName,
+                  }))
+                }}
               >
                 <option value="">Custom destination</option>
                 {destinationOptions.map((option) => (
@@ -402,15 +845,17 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="text-[11px] font-semibold text-secondary uppercase tracking-wide">Custom Destination</label>
-              <input
-                className="mt-1 w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs"
-                value={editForm.destinationName}
-                onChange={(event) => setEditForm((prev) => ({ ...prev, destinationName: event.target.value }))}
-                placeholder="Destination label"
-              />
-            </div>
+            {isCustomDestinationSelected && (
+              <div>
+                <label className="text-[11px] font-semibold text-secondary uppercase tracking-wide">Custom Destination</label>
+                <input
+                  className="mt-1 w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs"
+                  value={editForm.destinationName}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, destinationName: event.target.value }))}
+                  placeholder="Destination label"
+                />
+              </div>
+            )}
             <div>
               <label className="text-[11px] font-semibold text-secondary uppercase tracking-wide">Shipped Out Date</label>
               <StyledDateInput
@@ -437,14 +882,6 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
                 className="mt-1 w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs"
                 value={editForm.trucking}
                 onChange={(event) => setEditForm((prev) => ({ ...prev, trucking: event.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-semibold text-secondary uppercase tracking-wide">Notes</label>
-              <input
-                className="mt-1 w-full rounded-lg border border-primary-border/40 px-3 py-2 text-xs"
-                value={editForm.notes}
-                onChange={(event) => setEditForm((prev) => ({ ...prev, notes: event.target.value }))}
               />
             </div>
           </div>
@@ -479,19 +916,60 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
           <p className="text-xs text-secondary">Head Count</p>
           <p className="mt-1 text-sm font-semibold text-primary-text">{load.headCount || 0}</p>
         </div>
+        <div className="rounded-xl border border-primary-border/30 bg-white p-3">
+          <p className="text-xs text-secondary">Average Days On Feed</p>
+          <p className="mt-1 text-sm font-semibold text-primary-text">{averageDaysOnFeedLabel}</p>
+        </div>
       </div>
 
       {load.notes && (
         <div className="rounded-xl border border-primary-border/30 bg-white p-3">
-          <p className="text-xs text-secondary">Notes</p>
+          <p className="text-xs text-secondary">Before Load Notes</p>
           <p className="mt-1 text-sm text-primary-text">{load.notes}</p>
         </div>
       )}
+
+      {normalizedStatus === "arrived" ? (
+        <div className="rounded-xl border border-primary-border/30 bg-white p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-secondary">After Arrival Notes</p>
+            <button
+              type="button"
+              className="rounded-md border border-primary-border/40 px-2.5 py-1 text-xs font-semibold text-primary-text hover:bg-primary-border/10 disabled:opacity-60"
+              onClick={handleSaveAfterArrivalNotes}
+              disabled={isSavingAfterArrivalNotes}
+            >
+              {isSavingAfterArrivalNotes ? "Saving..." : "Save"}
+            </button>
+          </div>
+          <textarea
+            className="mt-2 min-h-[78px] w-full rounded-lg border border-primary-border/40 px-3 py-2 text-sm"
+            placeholder="Add general notes after arrival"
+            value={afterArrivalNotesDraft}
+            onChange={(event) => setAfterArrivalNotesDraft(event.target.value)}
+            maxLength={255}
+          />
+          <p className="mt-1 text-[11px] text-secondary">
+            {String(afterArrivalNotesDraft || "").length}/255 characters
+          </p>
+        </div>
+      ) : null}
 
       <div className="overflow-hidden rounded-xl border border-primary-border/30 bg-white">
         <div className="flex items-center justify-between border-b border-primary-border/30 bg-primary-border/10 px-3 py-2">
           <h4 className="text-sm font-semibold text-primary-text">Calves in this load</h4>
           <span className="text-xs text-secondary">{(load.calves || []).length} calves</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 border-b border-primary-border/20 bg-primary-border/5 px-3 py-2.5 md:grid-cols-4">
+          {CALF_ARRIVAL_STATUS_CARDS.map((item) => (
+            <div
+              key={`arrival-summary-${item.key}`}
+              className={`rounded-lg border px-2.5 py-2 ${item.className}`}
+            >
+              <p className="text-[11px] uppercase tracking-wide text-secondary">{item.label}</p>
+              <p className="mt-1 text-lg font-semibold text-primary-text">{arrivalStatusSummary[item.key] || 0}</p>
+            </div>
+          ))}
         </div>
         <div className="flex flex-col gap-2 border-b border-primary-border/20 px-3 py-2.5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-2" ref={filterRef}>
@@ -656,26 +1134,71 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
             </div>
           </div>
         </div>
+        {undoArrivalStatusAction && (
+          <div className="border-b border-primary-border/20 bg-primary-border/5 px-3 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary-border/30 bg-white px-2.5 py-2">
+              <p className="text-xs text-primary-text">
+                Status updated for calf <span className="font-semibold">{undoArrivalStatusAction.calfLabel}</span>.
+              </p>
+              <button
+                type="button"
+                className="rounded-md border border-primary-border/40 px-2.5 py-1 text-xs font-semibold text-primary-text hover:bg-primary-border/10"
+                onClick={handleUndoArrivalStatusChange}
+              >
+                Undo
+              </button>
+            </div>
+          </div>
+        )}
         <div className="max-h-[320px] overflow-y-auto">
           <table className="w-full border-collapse">
             <thead className="bg-primary-border/5">
               <tr>
                 <th className="text-left px-3 py-2 text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("primaryID")}>Visual Tag <span>{sortConfig.key === "primaryID" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
-                <th className="text-left px-3 py-2 text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("EID")}>EID <span>{sortConfig.key === "EID" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
+                <th className="text-left px-3 py-2 text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("dateIn")}>Date In <span>{sortConfig.key === "dateIn" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
                 <th className="text-left px-3 py-2 text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("breed")}>Breed <span>{sortConfig.key === "breed" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
+                <th className="text-right px-3 py-2 text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("daysOnFeed")}>Days On Feed <span>{sortConfig.key === "daysOnFeed" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
+                <th className="text-right px-3 py-2 text-xs">Actions</th>
               </tr>
             </thead>
             <tbody>
               {visibleCalves.map((calf) => (
                 <tr key={calf.id || calf.primaryID} className="border-t border-primary-border/20 hover:bg-primary-border/5">
                   <td className="px-3 py-2 text-sm">{calf.primaryID || "-"}</td>
-                  <td className="px-3 py-2 text-sm">{calf.EID || "-"}</td>
+                  <td className="px-3 py-2 text-sm">{formatDate(calf.placedDate || calf.dateIn)}</td>
                   <td className="px-3 py-2 text-sm">{calf.breed ? toTitleCase(calf.breed) : "-"}</td>
+                  <td className="px-3 py-2 text-sm text-right">{getLoadCalfDaysOnFeed(calf)}</td>
+                  <td className="px-3 py-2 text-right">
+                    <div className="inline-flex overflow-hidden rounded-md border border-primary-border/30 bg-white">
+                      {CALF_ARRIVAL_ACTIONS.map((statusOption, index) => {
+                        const normalized = normalizeCalfArrivalStatus(calf.arrivalStatus)
+                        const currentActionKey = normalized || "in_load"
+                        const isActive = currentActionKey === statusOption.key
+                        const isLoading = Boolean(updatingArrivalStatusByCalfId[Number(calf.id)])
+                        return (
+                          <button
+                            key={`${calf.id}-${statusOption.key}`}
+                            type="button"
+                            className={`px-2 py-1 text-[11px] font-medium whitespace-nowrap transition ${
+                              index > 0 ? "border-l border-primary-border/30" : ""
+                            } ${
+                              isActive ? statusOption.activeClassName : statusOption.inactiveClassName
+                            }`}
+                            disabled={isLoading}
+                            onClick={() => handleUpdateCalfArrivalStatus(calf, statusOption.key)}
+                            title={statusOption.fullLabel}
+                          >
+                            {isLoading && isActive ? "Saving..." : statusOption.shortLabel}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </td>
                 </tr>
               ))}
               {visibleCalves.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-3 py-4 text-sm text-secondary text-center">
+                  <td colSpan={5} className="px-3 py-4 text-sm text-secondary text-center">
                     No calves associated.
                   </td>
                 </tr>
@@ -722,6 +1245,49 @@ const LoadDetails = ({ load, onUpdated, onDeleted }) => {
               Last
             </button>
           </div>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-primary-border/30 bg-white">
+        <div className="flex items-center justify-between border-b border-primary-border/30 bg-primary-border/10 px-3 py-2">
+          <h4 className="text-sm font-semibold text-primary-text">Load Summary by Breed</h4>
+          <span className="text-xs text-secondary">{breedSummaryRows.length} breeds</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead className="bg-primary-border/5">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs">Breed</th>
+                <th className="px-3 py-2 text-right text-xs">Total Calves</th>
+                <th className="px-3 py-2 text-right text-xs">Avg Days On Feed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {breedSummaryRows.map((row) => (
+                <tr key={`breed-summary-${row.breed}`} className="border-t border-primary-border/20">
+                  <td className="px-3 py-2 text-sm text-primary-text">{row.breed === "Unspecified" ? row.breed : toTitleCase(row.breed)}</td>
+                  <td className="px-3 py-2 text-sm text-right text-primary-text">{row.totalCalves}</td>
+                  <td className="px-3 py-2 text-sm text-right text-primary-text">
+                    {new Intl.NumberFormat("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(row.averageDaysOnFeed)}
+                  </td>
+                </tr>
+              ))}
+              {breedSummaryRows.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-3 py-4 text-center text-sm text-secondary">
+                    No breed summary available.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-primary-border/30 bg-primary-border/5">
+                <td className="px-3 py-2 text-xs font-semibold text-primary-text">Total</td>
+                <td className="px-3 py-2 text-xs text-right font-semibold text-primary-text">{totalBreedSummaryCalves}</td>
+                <td className="px-3 py-2 text-xs text-right font-semibold text-primary-text">{averageDaysOnFeedLoadSummaryLabel}</td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </div>
 

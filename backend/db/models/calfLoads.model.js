@@ -37,6 +37,18 @@ const calfLoadsSchema = {
       onUpdate: 'CASCADE',
       onDelete: 'CASCADE'    
     },
+
+  daysOnFeedAtShipment: {
+    allowNull: true,
+    type: DataTypes.INTEGER,
+    field: 'days_on_feed_at_shipment',
+  },
+
+  arrivalStatus: {
+    allowNull: true,
+    type: DataTypes.STRING,
+    field: 'arrival_status',
+  },
 }
 
 class CalfLoads extends Model {

@@ -1,4 +1,22 @@
 import api from '../api'
+import { formatRanchDisplayName, normalizeRanchDisplay } from "../../utils/ranchDisplay"
+
+const normalizeLoadRanchDisplay = (load) => {
+  if (!load || typeof load !== "object") return load
+
+  return {
+    ...load,
+    origin: normalizeRanchDisplay(load.origin),
+    destination: normalizeRanchDisplay(load.destination),
+    counterpartyName: formatRanchDisplayName(load.counterpartyName),
+    destinationName: formatRanchDisplayName(load.destinationName),
+    shippedTo: formatRanchDisplayName(load.shippedTo),
+  }
+}
+
+const normalizeLoadList = (items) => (
+  Array.isArray(items) ? items.map((item) => normalizeLoadRanchDisplay(item)) : []
+)
 
 export const getLoadsByRanch = async (id, token) => {
     try {
@@ -8,7 +26,7 @@ export const getLoadsByRanch = async (id, token) => {
             headers: { Authorization: `Bearer ${token}` } 
         
         })
-      return response.data
+      return normalizeLoadList(response.data)
       
     } catch (error) {
       console.error('Error fetching calves:', error)
@@ -23,7 +41,7 @@ export const getLoadById = async (id, token) => {
             headers: { Authorization: `Bearer ${token}` }
 
         })
-      return response.data
+      return normalizeLoadRanchDisplay(response.data)
 
     } catch (error) {
       console.error('Error fetching load:', error)
@@ -40,7 +58,7 @@ export const createLoad = async (payload, token) => {
               'Content-Type': 'application/json'
             }
         })
-      return response.data
+      return normalizeLoadRanchDisplay(response.data)
 
     } catch (error) {
       console.error('Error creating load:', error)
@@ -57,10 +75,27 @@ export const updateLoad = async (id, payload, token) => {
               'Content-Type': 'application/json'
             }
         })
-      return response.data
+      return normalizeLoadRanchDisplay(response.data)
 
     } catch (error) {
       console.error('Error updating load:', error)
+      throw error
+    }
+}
+
+export const updateLoadCalfArrivalStatus = async (id, payload, token) => {
+    try {
+      const response = await api.patch(`/loads/${id}/calf-status`, payload,
+        {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+        })
+      return normalizeLoadRanchDisplay(response.data)
+
+    } catch (error) {
+      console.error('Error updating load calf arrival status:', error)
       throw error
     }
 }

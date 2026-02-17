@@ -86,6 +86,10 @@ class Ranches extends Model {
             foreignKey: 'ranchID',
             as: 'weightCategories'
         })
+    this.hasMany(models.RanchPricePeriods, {
+            foreignKey: 'ranchID',
+            as: 'pricePeriods'
+        })
 
     }
 
