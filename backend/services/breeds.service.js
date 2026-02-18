@@ -1,6 +1,6 @@
 const boom = require('@hapi/boom')
 const { model } = require('../db/libs/sequelize')
-const { normalizeBreedPayload, normalizeLookupText } = require('../utils/masterDataNormalization')
+const { normalizeBreedPayload, normalizeLookupText, normalizeOrderIndex } = require('../utils/masterDataNormalization')
 
 const findByNormalizedName = async (name, ignoreId = null) => {
   const rows = await model.Breeds.findAll({ raw: true })
@@ -20,12 +20,18 @@ class BreedsService {
     const existing = await findByNormalizedName(payload.name)
     if (existing) throw boom.conflict('Breed already exists')
 
+    if (payload.orderIndex === undefined) {
+      const maxOrderIndex = await model.Breeds.max('orderIndex')
+      const safeMaxOrderIndex = Number.isFinite(Number(maxOrderIndex)) ? Number(maxOrderIndex) : -1
+      payload.orderIndex = safeMaxOrderIndex + 1
+    }
+
     return model.Breeds.create(payload)
   }
 
   async findAll() {
     return model.Breeds.findAll({
-      order: [['name', 'ASC']],
+      order: [['orderIndex', 'ASC'], ['id', 'ASC']],
     })
   }
 
@@ -37,14 +43,28 @@ class BreedsService {
 
   async update(id, changes) {
     const breed = await this.findOne(id)
-    const payload = normalizeBreedPayload({
-      ...breed.toJSON(),
-      ...changes,
-    })
-    if (!payload.name) throw boom.badRequest('Breed name is required')
+    const payload = {}
 
-    const existing = await findByNormalizedName(payload.name, id)
-    if (existing) throw boom.conflict('Breed already exists')
+    if (Object.prototype.hasOwnProperty.call(changes, 'name')) {
+      const normalized = normalizeBreedPayload({ name: changes.name })
+      if (!normalized.name) throw boom.badRequest('Breed name is required')
+
+      const existing = await findByNormalizedName(normalized.name, id)
+      if (existing) throw boom.conflict('Breed already exists')
+      payload.name = normalized.name
+    }
+
+    if (Object.prototype.hasOwnProperty.call(changes, 'orderIndex')) {
+      const normalizedOrderIndex = normalizeOrderIndex(changes.orderIndex)
+      if (normalizedOrderIndex === undefined) {
+        throw boom.badRequest('orderIndex must be a non-negative integer')
+      }
+      payload.orderIndex = normalizedOrderIndex
+    }
+
+    if (Object.keys(payload).length === 0) {
+      return breed
+    }
 
     return breed.update(payload)
   }

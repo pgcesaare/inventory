@@ -29,9 +29,21 @@ const normalizeZipCode = (value) => {
   return digits.slice(0, 5)
 }
 
+const normalizeOrderIndex = (value) => {
+  if (value === null || value === undefined || value === '') return undefined
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return undefined
+  const integer = Math.trunc(parsed)
+  if (integer < 0) return undefined
+  return integer
+}
+
 const normalizeBreedPayload = (payload = {}) => {
   const name = toTitleCase(payload.name)
-  return { name }
+  const orderIndex = normalizeOrderIndex(payload.orderIndex)
+  const result = { name }
+  if (orderIndex !== undefined) result.orderIndex = orderIndex
+  return result
 }
 
 const normalizeSellerPayload = (payload = {}) => {
@@ -56,6 +68,7 @@ module.exports = {
   toTitleCase,
   normalizeState,
   normalizeZipCode,
+  normalizeOrderIndex,
   normalizeBreedPayload,
   normalizeSellerPayload,
 }

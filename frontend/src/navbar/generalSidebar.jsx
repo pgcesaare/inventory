@@ -74,6 +74,14 @@ export function GeneralSidebar() {
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <NavLink to="/prices">
+                    <Tags />
+                    <span>Prices</span>
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -94,14 +102,6 @@ export function GeneralSidebar() {
                   <NavLink to="/invoices">
                     <ReceiptText />
                     <span>Invoices</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <NavLink to="/prices">
-                    <Tags />
-                    <span>Prices</span>
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>

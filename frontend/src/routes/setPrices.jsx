@@ -8,6 +8,7 @@ import { useAppContext } from "../context"
 import { formatDateMMDDYYYY } from "../utils/dateFormat"
 import { isDateInDateRange } from "../utils/dateRange"
 import { getWeightBracketLabel, normalizeWeightBrackets } from "../utils/weightBrackets"
+import { formatSexLabel } from "../utils/sexLabel"
 import MainDataTable from "../components/shared/mainDataTable"
 import DateFilterMenu from "../components/shared/dateFilterMenu"
 import BreedSellerFilterMenu from "../components/shared/breedSellerFilterMenu"
@@ -465,17 +466,19 @@ const applyCalfFilters = (source, filters) => {
 
     const breedFilterValues = asArray(filters.breed)
     const sellerFilterValues = asArray(filters.seller)
+    const sexFilterValues = asArray(filters.sex).map((value) => normalizeText(value))
     const weightBracketFilter = String(filters.weightBracket || "")
 
     const breedMatch = breedFilterValues.length === 0 || breedFilterValues.includes(calf.breed)
     const sellerMatch = sellerFilterValues.length === 0 || sellerFilterValues.includes(calf.seller)
+    const sexMatch = sexFilterValues.length === 0 || sexFilterValues.includes(normalizeText(calf.sex))
     const weightBracket = getWeightBracketLabel(calf.weight, filters.weightBrackets, calf.breed)
     const weightBracketMatch = !weightBracketFilter || weightBracket === weightBracketFilter
 
     const rawDate = calf.dateIn || calf.placedDate
     const dateRangeMatch = isDateInDateRange(rawDate, filters.dateFrom, filters.dateTo)
 
-    return searchMatch && breedMatch && sellerMatch && weightBracketMatch && dateRangeMatch
+    return searchMatch && breedMatch && sellerMatch && sexMatch && weightBracketMatch && dateRangeMatch
   })
 }
 
@@ -503,6 +506,7 @@ const SetPrices = () => {
   const [mainSearchField, setMainSearchField] = useState("all")
   const [mainBreed, setMainBreed] = useState([])
   const [mainSeller, setMainSeller] = useState([])
+  const [mainSex, setMainSex] = useState([])
   const [mainWeightBracket, setMainWeightBracket] = useState("")
   const [mainDateFrom, setMainDateFrom] = useState("")
   const [mainDateTo, setMainDateTo] = useState("")
@@ -566,6 +570,10 @@ const SetPrices = () => {
     () => [...new Set(calves.map((calf) => calf.seller).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))),
     [calves]
   )
+  const sexOptions = useMemo(
+    () => [...new Set(calves.map((calf) => calf.sex).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))),
+    [calves]
+  )
   const weightBracketOptions = useMemo(
     () => bracketSourceForFilters.map((category) => category.label).filter(Boolean),
     [bracketSourceForFilters]
@@ -579,6 +587,7 @@ const SetPrices = () => {
       searchField: mainSearchField,
       breed: mainBreed,
       seller: mainSeller,
+      sex: mainSex,
       weightBracket: mainWeightBracket,
       weightBrackets: bracketSourceForFilters,
       dateFrom: mainDateFrom,
@@ -595,6 +604,7 @@ const SetPrices = () => {
       mainSearchMatch,
       mainSearchMode,
       mainSeller,
+      mainSex,
       mainWeightBracket,
     ]
   )
@@ -628,16 +638,14 @@ const SetPrices = () => {
 
   const tableColumns = [
     { key: "visualTag", label: "Visual Tag" },
-    { key: "eid", label: "EID" },
     { key: "backTag", label: "Back Tag" },
     { key: "dateIn", label: "Date In" },
     { key: "breed", label: "Breed" },
     { key: "sex", label: "Sex" },
     { key: "weight", label: "Weight", align: "right" },
     { key: "weightBracket", label: "Bracket" },
-    { key: "layoutMode", label: "Layout" },
-    { key: "pricingStatus", label: "Pricing Status" },
-    { key: "suggestedPrice", label: "Suggested Price", align: "right" },
+    { key: "pricingStatus", label: "SP" },
+    { key: "suggestedPrice", label: "SP", align: "right" },
     { key: "apply", label: "Action", align: "right", sortable: false },
   ]
 
@@ -645,14 +653,12 @@ const SetPrices = () => {
     () => rowsWithSuggestions.map(({ calf, suggestion }) => ({
       id: calf.id,
       visualTag: calf.primaryID || calf.visualTag || "-",
-      eid: calf.EID || calf.eid || "-",
       backTag: calf.backTag || calf.originalID || "-",
       dateIn: formatDateMMDDYYYY(calf.dateIn || calf.placedDate, "-"),
       breed: calf.breed ? toTitleCase(calf.breed) : "-",
-      sex: calf.sex ? toTitleCase(calf.sex) : "-",
+      sex: formatSexLabel(calf.sex),
       weight: toNullableNumber(calf.weight),
       weightBracket: getWeightBracketLabel(calf.weight, bracketSourceForFilters, calf.breed),
-      layoutMode: suggestion.layoutMode === "weight" ? "By Weight" : "Single Price",
       pricingStatus: suggestion,
       suggestedPrice: suggestion.suggestedPrice,
       apply: suggestion.status === "ready" ? "Apply" : "-",
@@ -663,9 +669,8 @@ const SetPrices = () => {
   const getMainSearchPlaceholder = useCallback((mode, field) => {
     const byField = {
       visualTag: mode === "multiple" ? "TAG-001, TAG-002, TAG-003" : "Search visual tag",
-      eid: mode === "multiple" ? "982000001, 982000002, 982000003" : "Search EID",
       backTag: mode === "multiple" ? "B-001, B-002, B-003" : "Search back tag",
-      all: mode === "multiple" ? "TAG-001, TAG-002, TAG-003" : "Search tag / EID / back tag",
+      all: mode === "multiple" ? "TAG-001, TAG-002, TAG-003" : "Search tag / back tag",
     }
     return byField[field] || byField.all
   }, [])
@@ -769,21 +774,23 @@ const SetPrices = () => {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-primary-border/45 dark:border-primary-border/65 bg-surface p-4 shadow-sm">
+      <div className="rounded-xl border border-primary-border/40 dark:border-primary-border/60 bg-surface px-4 py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-secondary">Active Price Period</p>
-            <p className="mt-1 text-base font-semibold text-primary-text">{activePeriodLabel}</p>
-            <p className="mt-0.5 text-xs text-secondary">{activePeriodRange}</p>
-            <p className="mt-1 inline-flex items-center gap-1 rounded-full border border-primary-border/45 bg-primary-border/10 px-2 py-0.5 text-xs font-medium text-primary-text">
-              <Sparkles className="size-3.5 text-action-blue" />
-              Layout: {activeLayoutLabel}
-            </p>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary">Active Price Period</p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p className="text-sm font-semibold text-primary-text">{activePeriodLabel}</p>
+              <span className="text-xs text-secondary">{activePeriodRange}</span>
+              <span className="inline-flex items-center gap-1 text-xs text-secondary">
+                <Sparkles className="size-3.5 text-action-blue" />
+                {activeLayoutLabel}
+              </span>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-primary-border/55 px-3 py-2 text-xs font-medium text-primary-text hover:bg-primary-border/10 disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-md border border-primary-border/50 px-2.5 py-1.5 text-xs font-medium text-primary-text hover:bg-primary-border/10 disabled:opacity-60"
               onClick={() => loadData({ silent: true })}
               disabled={refreshing || applyingAll}
             >
@@ -792,7 +799,7 @@ const SetPrices = () => {
             </button>
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-action-blue/80 bg-action-blue px-3 py-2 text-xs font-semibold text-white hover:bg-action-blue/90 disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-md border border-action-blue/80 bg-action-blue px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-action-blue/90 disabled:opacity-60"
               onClick={applyAllSuggestedPrices}
               disabled={applyingAll || readyRows.length === 0 || !activePricePeriod}
             >
@@ -883,7 +890,6 @@ const SetPrices = () => {
                 fieldOptions={[
                   { value: "all", label: "All" },
                   { value: "visualTag", label: "Visual Tag" },
-                  { value: "eid", label: "EID" },
                   { value: "backTag", label: "Back Tag" },
                 ]}
                 onChange={({ searchMode, searchMatch, searchField }) => {
@@ -918,14 +924,18 @@ const SetPrices = () => {
                 className="w-full"
                 breed={mainBreed}
                 seller={mainSeller}
+                sex={mainSex}
                 weightBracket={mainWeightBracket}
                 breedOptions={breedOptions}
                 sellerOptions={sellerOptions}
+                sexOptions={sexOptions}
                 weightBracketOptions={weightBracketOptions}
+                showSex
                 showWeightBracket
-                onChange={({ breed, seller, weightBracket }) => {
+                onChange={({ breed, seller, sex, weightBracket }) => {
                   setMainBreed(Array.isArray(breed) ? breed : (breed ? [breed] : []))
                   setMainSeller(Array.isArray(seller) ? seller : (seller ? [seller] : []))
+                  setMainSex(Array.isArray(sex) ? sex : (sex ? [sex] : []))
                   setMainWeightBracket(weightBracket || "")
                 }}
               />
@@ -964,6 +974,7 @@ const SetPrices = () => {
                   setMainSearchField("all")
                   setMainBreed([])
                   setMainSeller([])
+                  setMainSex([])
                   setMainWeightBracket("")
                   setMainDateFrom("")
                   setMainDateTo("")

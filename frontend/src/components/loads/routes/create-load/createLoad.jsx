@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams } from "react-router-dom"
 import { Search, CheckCheck, X } from "lucide-react"
 import { useAuth0 } from "@auth0/auth0-react"
 import { useToken } from "../../../../api/useToken"
-import { getRanches } from "../../../../api/ranches"
+import { getRanchById, getRanches } from "../../../../api/ranches"
 import { getInventoryByRanch } from "../../../../api/calves"
 import { createLoad } from "../../../../api/loads"
 import { formatDateMMDDYYYY } from "../../../../utils/dateFormat"
@@ -13,6 +13,8 @@ import SearchOptionsMenu from "../../../shared/searchOptionsMenu"
 import StyledDateInput from "../../../shared/styledDateInput"
 import { useAppContext } from "../../../../context"
 import { isDateInDateRange } from "../../../../utils/dateRange"
+import { formatSexLabel } from "../../../../utils/sexLabel"
+import { getWeightBracketLabel, normalizeWeightBrackets } from "../../../../utils/weightBrackets"
 
 const fieldClass = "w-full rounded-xl border border-primary-border/40 bg-surface px-3 py-2 text-sm text-primary-text focus:outline-none focus:ring-2 focus:ring-action-blue/30"
 const pickerButtonClass = "h-[36px] rounded-xl border border-primary-border/40 px-3 text-xs font-medium text-secondary hover:bg-primary-border/10 transition-colors"
@@ -72,6 +74,7 @@ const CreateLoad = ({ onCreated }) => {
 
   const [destinations, setDestinations] = useState([])
   const [inventoryCalves, setInventoryCalves] = useState([])
+  const [originWeightBrackets, setOriginWeightBrackets] = useState([])
   const [selectedCalfIDs, setSelectedCalfIDs] = useState([])
   const [searchMode, setSearchMode] = useState("single")
   const [searchMatchMode, setSearchMatchMode] = useState("exact")
@@ -80,6 +83,7 @@ const CreateLoad = ({ onCreated }) => {
   const [tagListSearch, setTagListSearch] = useState("")
   const [breedFilter, setBreedFilter] = useState([])
   const [sellerFilter, setSellerFilter] = useState([])
+  const [sexFilter, setSexFilter] = useState([])
   const [calfDateFrom, setCalfDateFrom] = useState("")
   const [calfDateTo, setCalfDateTo] = useState("")
   const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" })
@@ -109,13 +113,15 @@ const CreateLoad = ({ onCreated }) => {
 
     const fetchData = async () => {
       try {
-        const [ranches, calves] = await Promise.all([
+        const [ranches, calves, originRanch] = await Promise.all([
           getRanches(token),
           getInventoryByRanch(id, token),
+          getRanchById(id, token),
         ])
 
         setDestinations(Array.isArray(ranches) ? ranches : [])
         setInventoryCalves(Array.isArray(calves) ? calves : [])
+        setOriginWeightBrackets(normalizeWeightBrackets(originRanch?.weightCategories))
       } catch (error) {
         console.error("Error loading create-load data:", error)
       }
@@ -130,6 +136,10 @@ const CreateLoad = ({ onCreated }) => {
   )
   const sellerOptions = useMemo(
     () => [...new Set(inventoryCalves.map((calf) => calf.seller).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))),
+    [inventoryCalves]
+  )
+  const sexOptions = useMemo(
+    () => [...new Set(inventoryCalves.map((calf) => calf.sex).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))),
     [inventoryCalves]
   )
 
@@ -166,13 +176,16 @@ const CreateLoad = ({ onCreated }) => {
       const matchesSearch = searchMode === "multiple" ? matchesTagList : matchesSingleSearch
       const matchesBreed = breedFilter.length === 0 || breedFilter.includes(calf.breed)
       const matchesSeller = sellerFilter.length === 0 || sellerFilter.includes(calf.seller)
+      const normalizedSex = String(calf?.sex || "").toLowerCase().trim()
+      const normalizedSexFilter = sexFilter.map((value) => String(value || "").toLowerCase().trim()).filter(Boolean)
+      const matchesSex = normalizedSexFilter.length === 0 || normalizedSexFilter.includes(normalizedSex)
 
       const calfDate = dateValue(calf)
       const matchesDateRange = isDateInDateRange(calfDate, calfDateFrom, calfDateTo)
 
-      return matchesSearch && matchesBreed && matchesSeller && matchesDateRange
+      return matchesSearch && matchesBreed && matchesSeller && matchesSex && matchesDateRange
     })
-  }, [inventoryCalves, searchMode, searchMatchMode, searchField, tagSearch, tagListSearch, breedFilter, sellerFilter, calfDateFrom, calfDateTo])
+  }, [inventoryCalves, searchMode, searchMatchMode, searchField, tagSearch, tagListSearch, breedFilter, sellerFilter, sexFilter, calfDateFrom, calfDateTo])
   const calculateDaysOnFeed = (calf) => {
     const intakeRaw = calf.dateIn || calf.placedDate
     const intakeStart = parseDateToLocalDayStart(intakeRaw)
@@ -191,6 +204,15 @@ const CreateLoad = ({ onCreated }) => {
 
     return safeIntakeDays + preDays
   }
+  const getCalfWeightBracket = useCallback(
+    (calf) => getWeightBracketLabel(calf?.weight, originWeightBrackets, calf?.breed),
+    [originWeightBrackets]
+  )
+  const formatWeightLabel = (value) => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) return "-"
+    return parsed.toLocaleString(undefined, { maximumFractionDigits: 2 })
+  }
   const sortedCalves = useMemo(() => {
     if (!sortConfig.key) return filteredCalves
     const factor = sortConfig.direction === "asc" ? 1 : -1
@@ -207,6 +229,9 @@ const CreateLoad = ({ onCreated }) => {
       primaryID: (row) => row.primaryID,
       EID: (row) => row.EID,
       breed: (row) => row.breed,
+      sex: (row) => formatSexLabel(row.sex),
+      weight: (row) => row.weight,
+      weightBracket: (row) => getCalfWeightBracket(row),
       dateIn: (row) => dateValue(row),
       daysOnFeed: (row) => calculateDaysOnFeed(row),
     }[sortConfig.key] || ((row) => row?.[sortConfig.key])
@@ -218,7 +243,7 @@ const CreateLoad = ({ onCreated }) => {
       if (aValue > bValue) return 1 * factor
       return 0
     })
-  }, [filteredCalves, sortConfig])
+  }, [filteredCalves, sortConfig, getCalfWeightBracket])
   const avgDaysOnFeedFiltered = useMemo(() => {
     if (filteredCalves.length === 0) return 0
     const total = filteredCalves.reduce((sum, calf) => sum + calculateDaysOnFeed(calf), 0)
@@ -259,7 +284,7 @@ const CreateLoad = ({ onCreated }) => {
 
   useEffect(() => {
     setPickerPage(1)
-  }, [searchMode, searchMatchMode, tagSearch, tagListSearch, breedFilter, sellerFilter, calfDateFrom, calfDateTo, sortConfig.key, sortConfig.direction, safePickerLimit])
+  }, [searchMode, searchMatchMode, tagSearch, tagListSearch, breedFilter, sellerFilter, sexFilter, calfDateFrom, calfDateTo, sortConfig.key, sortConfig.direction, safePickerLimit])
 
   useEffect(() => {
     if (pickerPage > pickerTotalPages) {
@@ -268,10 +293,10 @@ const CreateLoad = ({ onCreated }) => {
   }, [pickerPage, pickerTotalPages])
   useEffect(() => {
     if (!pickAllRef.current) return
-    const filteredIds = sortedCalves.map((calf) => calf.id).filter(Boolean)
-    const selectedFilteredCount = filteredIds.filter((idValue) => selectedCalfIDs.includes(idValue)).length
-    pickAllRef.current.indeterminate = selectedFilteredCount > 0 && selectedFilteredCount < filteredIds.length
-  }, [sortedCalves, selectedCalfIDs])
+    const visibleIds = visiblePickerCalves.map((calf) => calf.id).filter(Boolean)
+    const selectedVisibleCount = visibleIds.filter((idValue) => selectedCalfIDs.includes(idValue)).length
+    pickAllRef.current.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length
+  }, [visiblePickerCalves, selectedCalfIDs])
 
   const selectedCount = selectedCalfIDs.length
   const quickPickerLimits = [100, 150, 200, 230]
@@ -323,14 +348,14 @@ const CreateLoad = ({ onCreated }) => {
     if (pickerError) setPickerError("")
   }
   const toggleSelectAllFiltered = () => {
-    const filteredIds = sortedCalves.map((calf) => calf.id).filter(Boolean)
-    if (filteredIds.length === 0) return
+    const visibleIds = visiblePickerCalves.map((calf) => calf.id).filter(Boolean)
+    if (visibleIds.length === 0) return
 
-    const allFilteredSelected = filteredIds.every((idValue) => selectedCalfIDs.includes(idValue))
+    const allVisibleSelected = visibleIds.every((idValue) => selectedCalfIDs.includes(idValue))
     setSelectedCalfIDs((prev) => (
-      allFilteredSelected
-        ? prev.filter((idValue) => !filteredIds.includes(idValue))
-        : [...new Set([...prev, ...filteredIds])]
+      allVisibleSelected
+        ? prev.filter((idValue) => !visibleIds.includes(idValue))
+        : [...new Set([...prev, ...visibleIds])]
     ))
     if (pickerError) setPickerError("")
   }
@@ -467,81 +492,102 @@ const CreateLoad = ({ onCreated }) => {
 
       {wizardStep === "setup" && (
         <>
-      <div className="rounded-2xl border border-primary-border/30 bg-surface p-4 h-full">
-        <p className="text-xs uppercase tracking-wide text-secondary">Load settings</p>
-        <p className="mt-1 text-xs text-secondary">Fields marked with <span className="text-red-600">*</span> are required. For destination, provide ranch or custom value.</p>
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div ref={destinationRef} className="scroll-mt-24">
-            <label className="text-xs font-semibold text-secondary">Destination Ranch<RequiredMark /></label>
-            <select
-              className={fieldClass}
-              value={form.destinationRanchID}
-              onChange={(e) => setField("destinationRanchID", e.target.value)}
-            >
-              <option value="">Select ranch (optional if custom)</option>
-              {destinations
-                .filter((ranch) => Number(ranch.id) !== Number(id))
-                .map((ranch) => (
-                <option key={ranch.id} value={ranch.id}>
-                  {ranch.name}
-                </option>
-              ))}
-            </select>
+      <div className="rounded-2xl border border-primary-border/40 bg-white shadow-sm h-full overflow-hidden">
+        <div className="border-b border-primary-border/30 bg-primary-border/10 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-secondary">Load Settings</p>
+          <p className="mt-1 text-xs text-secondary">
+            Fields marked with <span className="text-red-600">*</span> are required. Choose destination ranch or set a custom destination.
+          </p>
+        </div>
+        <div className="space-y-3 p-4">
+          <div className="rounded-xl border border-primary-border/35 bg-surface px-3 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary">Destination</p>
+            <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div ref={destinationRef} className="scroll-mt-24">
+                <label className="text-xs font-semibold text-primary-text">Destination Ranch<RequiredMark /></label>
+                <select
+                  className={`${fieldClass} mt-1 border-primary-border/60 bg-white`}
+                  value={form.destinationRanchID}
+                  onChange={(e) => setField("destinationRanchID", e.target.value)}
+                >
+                  <option value="">Select ranch (optional if custom)</option>
+                  {destinations
+                    .filter((ranch) => Number(ranch.id) !== Number(id))
+                    .map((ranch) => (
+                    <option key={ranch.id} value={ranch.id}>
+                      {ranch.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-primary-text">Custom Destination<RequiredMark /></label>
+                <input
+                  className={`${fieldClass} mt-1 border-primary-border/60 bg-white ${hasSelectedDestinationRanch ? "cursor-not-allowed opacity-60" : ""}`}
+                  value={form.destinationName}
+                  onChange={(e) => setField("destinationName", e.target.value)}
+                  disabled={hasSelectedDestinationRanch}
+                  placeholder="Any extra destination not in ranches table"
+                />
+                <p className="mt-1 text-[11px] text-secondary">
+                  {hasSelectedDestinationRanch ? "Custom destination is disabled while a ranch is selected." : "Use only when destination is not in ranch list."}
+                </p>
+              </div>
+            </div>
             {fieldErrors.destination && (
-              <p className="mt-1 text-xs text-red-600">{fieldErrors.destination}</p>
+              <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">{fieldErrors.destination}</p>
             )}
           </div>
-          <div>
-            <label className="text-xs font-semibold text-secondary">Custom Destination<RequiredMark /></label>
-            <input
-              className={`${fieldClass} ${hasSelectedDestinationRanch ? "cursor-not-allowed opacity-60" : ""}`}
-              value={form.destinationName}
-              onChange={(e) => setField("destinationName", e.target.value)}
-              disabled={hasSelectedDestinationRanch}
-              placeholder="Any extra destination not in ranches table"
-            />
-            {fieldErrors.destination && (
-              <p className="mt-1 text-xs text-red-600">{fieldErrors.destination}</p>
-            )}
-          </div>
-          <div ref={departureDateRef} className="scroll-mt-24">
-            <label className="text-xs font-semibold text-secondary">Shipped Out Date<RequiredMark /></label>
-            <StyledDateInput
-              inputClassName={fieldClass}
-              value={form.departureDate}
-              onChange={(e) => setField("departureDate", e.target.value)}
-              ariaLabel="Open shipped out date picker"
-            />
+
+          <div className="rounded-xl border border-primary-border/35 bg-surface px-3 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary">Schedule</p>
+            <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div ref={departureDateRef} className="scroll-mt-24">
+                <label className="text-xs font-semibold text-primary-text">Shipped Out Date<RequiredMark /></label>
+                <StyledDateInput
+                  inputClassName={`${fieldClass} mt-1 border-primary-border/60 bg-white`}
+                  value={form.departureDate}
+                  onChange={(e) => setField("departureDate", e.target.value)}
+                  ariaLabel="Open shipped out date picker"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-primary-text">Arrival Date</label>
+                <StyledDateInput
+                  inputClassName={`${fieldClass} mt-1 border-primary-border/60 bg-white`}
+                  value={form.arrivalDate}
+                  onChange={(e) => setField("arrivalDate", e.target.value)}
+                  ariaLabel="Open arrival date picker"
+                />
+              </div>
+            </div>
             {fieldErrors.departureDate && (
-              <p className="mt-1 text-xs text-red-600">{fieldErrors.departureDate}</p>
+              <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">{fieldErrors.departureDate}</p>
             )}
           </div>
-          <div>
-            <label className="text-xs font-semibold text-secondary">Arrival Date</label>
-            <StyledDateInput
-              inputClassName={fieldClass}
-              value={form.arrivalDate}
-              onChange={(e) => setField("arrivalDate", e.target.value)}
-              ariaLabel="Open arrival date picker"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-secondary">Trucking</label>
-            <input
-              className={fieldClass}
-              value={form.trucking}
-              onChange={(e) => setField("trucking", e.target.value)}
-              placeholder="Company"
-            />
-          </div>
-          <div className="md:col-span-2">
-            <label className="text-xs font-semibold text-secondary">Notes</label>
-            <textarea
-              className={`${fieldClass} min-h-[84px]`}
-              value={form.notes}
-              onChange={(e) => setField("notes", e.target.value)}
-              placeholder="Special instructions, comments, reference numbers..."
-            />
+
+          <div className="rounded-xl border border-primary-border/35 bg-surface px-3 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary">Transport & Notes</p>
+            <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div>
+                <label className="text-xs font-semibold text-primary-text">Trucking</label>
+                <input
+                  className={`${fieldClass} mt-1 border-primary-border/60 bg-white`}
+                  value={form.trucking}
+                  onChange={(e) => setField("trucking", e.target.value)}
+                  placeholder="Company"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-xs font-semibold text-primary-text">Notes</label>
+                <textarea
+                  className={`${fieldClass} mt-1 min-h-[84px] border-primary-border/60 bg-white`}
+                  value={form.notes}
+                  onChange={(e) => setField("notes", e.target.value)}
+                  placeholder="Special instructions, comments, reference numbers..."
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -624,11 +670,15 @@ const CreateLoad = ({ onCreated }) => {
               menuAlign="right"
               breed={breedFilter}
               seller={sellerFilter}
+              sex={sexFilter}
               breedOptions={breedOptions}
               sellerOptions={sellerOptions}
-              onChange={({ breed, seller }) => {
+              sexOptions={sexOptions}
+              showSex
+              onChange={({ breed, seller, sex }) => {
                 setBreedFilter(Array.isArray(breed) ? breed : (breed ? [breed] : []))
                 setSellerFilter(Array.isArray(seller) ? seller : (seller ? [seller] : []))
+                setSexFilter(Array.isArray(sex) ? sex : (sex ? [sex] : []))
               }}
             />
             <DateFilterMenu
@@ -668,6 +718,7 @@ const CreateLoad = ({ onCreated }) => {
                 setSearchField("all")
                 setBreedFilter([])
                 setSellerFilter([])
+                setSexFilter([])
                 setCalfDateFrom("")
                 setCalfDateTo("")
                 setPickerPage(1)
@@ -679,7 +730,7 @@ const CreateLoad = ({ onCreated }) => {
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs text-secondary">Quick row limits:</span>
+          <span className="text-xs text-secondary">Quick load limits:</span>
           {quickPickerLimits.map((limit) => (
             <button
               key={`quick-limit-${limit}`}
@@ -697,29 +748,32 @@ const CreateLoad = ({ onCreated }) => {
         {pickerError && <p className="mt-2 text-xs text-red-600">{pickerError}</p>}
 
         <div className="mt-4 rounded-xl border border-primary-border/30">
-          <div className="max-h-[600px] overflow-y-auto overflow-x-auto overscroll-contain">
-            <table className="w-full table-fixed border-collapse">
+          <div className="max-h-[600px] w-full overflow-auto overscroll-contain">
+            <table className="min-w-full w-max table-auto border-collapse">
             <thead className="sticky top-0 z-10 bg-primary-border/10">
               <tr>
-                <th className="w-16 px-3 py-2 text-left text-xs">
+                <th className="w-[72px] px-3 py-2 text-left text-xs whitespace-nowrap">
                   <div className="flex items-center gap-2">
                     <input
                       ref={pickAllRef}
                       type="checkbox"
                       onChange={toggleSelectAllFiltered}
                       checked={
-                        sortedCalves.length > 0 &&
-                        sortedCalves.every((calf) => selectedCalfIDs.includes(calf.id))
+                        visiblePickerCalves.length > 0 &&
+                        visiblePickerCalves.every((calf) => selectedCalfIDs.includes(calf.id))
                       }
                     />
                     <span>Pick</span>
                   </div>
                 </th>
-                <th className="px-3 py-2 text-left text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("primaryID")}>Visual Tag <span>{sortConfig.key === "primaryID" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
-                <th className="px-3 py-2 text-left text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("EID")}>EID <span>{sortConfig.key === "EID" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
-                <th className="px-3 py-2 text-left text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("dateIn")}>Date In <span>{sortConfig.key === "dateIn" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
-                <th className="px-3 py-2 text-left text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("breed")}>Breed <span>{sortConfig.key === "breed" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
-                <th className="px-3 py-2 text-right text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("daysOnFeed")}>Days On Feed <span>{sortConfig.key === "daysOnFeed" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
+                <th className="px-3 py-2 text-left text-xs whitespace-nowrap"><button type="button" className="inline-flex items-center gap-1 cursor-pointer whitespace-nowrap" onClick={() => toggleSort("primaryID")}>Visual Tag <span>{sortConfig.key === "primaryID" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
+                <th className="px-3 py-2 text-left text-xs whitespace-nowrap"><button type="button" className="inline-flex items-center gap-1 cursor-pointer whitespace-nowrap" onClick={() => toggleSort("EID")}>EID <span>{sortConfig.key === "EID" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
+                <th className="px-3 py-2 text-left text-xs whitespace-nowrap"><button type="button" className="inline-flex items-center gap-1 cursor-pointer whitespace-nowrap" onClick={() => toggleSort("dateIn")}>Date In <span>{sortConfig.key === "dateIn" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
+                <th className="px-3 py-2 text-left text-xs whitespace-nowrap"><button type="button" className="inline-flex items-center gap-1 cursor-pointer whitespace-nowrap" onClick={() => toggleSort("breed")}>Breed <span>{sortConfig.key === "breed" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
+                <th className="px-3 py-2 text-left text-xs whitespace-nowrap"><button type="button" className="inline-flex items-center gap-1 cursor-pointer whitespace-nowrap" onClick={() => toggleSort("sex")}>Sex <span>{sortConfig.key === "sex" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
+                <th className="px-3 py-2 text-right text-xs whitespace-nowrap"><button type="button" className="inline-flex items-center gap-1 cursor-pointer whitespace-nowrap" onClick={() => toggleSort("weight")}>Weight <span>{sortConfig.key === "weight" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
+                <th className="px-3 py-2 text-left text-xs whitespace-nowrap"><button type="button" className="inline-flex items-center gap-1 cursor-pointer whitespace-nowrap" onClick={() => toggleSort("weightBracket")}>Bracket <span>{sortConfig.key === "weightBracket" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
+                <th className="px-3 py-2 text-right text-xs whitespace-nowrap"><button type="button" className="inline-flex items-center gap-1 cursor-pointer whitespace-nowrap" onClick={() => toggleSort("daysOnFeed")}>DOF <span>{sortConfig.key === "daysOnFeed" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
               </tr>
             </thead>
             <tbody>
@@ -741,17 +795,20 @@ const CreateLoad = ({ onCreated }) => {
                         onChange={() => toggleSelectCalf(calf.id)}
                       />
                     </td>
-                    <td className="px-3 py-2 truncate">{calf.primaryID || "-"}</td>
-                    <td className="px-3 py-2 truncate">{calf.EID || "-"}</td>
-                    <td className="px-3 py-2 truncate">{dateLabel(dateValue(calf))}</td>
-                    <td className="px-3 py-2 truncate">{calf.breed ? toTitleCase(calf.breed) : "-"}</td>
-                    <td className="px-3 py-2 text-right">{calculateDaysOnFeed(calf)}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{calf.primaryID || "-"}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{calf.EID || "-"}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{dateLabel(dateValue(calf))}</td>
+                    <td className="px-3 py-2 min-w-[180px]">{calf.breed ? toTitleCase(calf.breed) : "-"}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{formatSexLabel(calf.sex)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{formatWeightLabel(calf.weight)}</td>
+                    <td className="px-3 py-2 min-w-[150px]">{getCalfWeightBracket(calf)}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{calculateDaysOnFeed(calf)}</td>
                   </tr>
                 )
               })}
               {visiblePickerCalves.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-sm text-secondary">
+                  <td colSpan={9} className="px-3 py-6 text-center text-sm text-secondary">
                     No calves match this search.
                   </td>
                 </tr>

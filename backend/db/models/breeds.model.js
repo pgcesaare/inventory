@@ -14,6 +14,12 @@ const BreedsSchema = {
     type: DataTypes.STRING,
     unique: true,
   },
+  orderIndex: {
+    allowNull: false,
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    field: 'order_index',
+  },
   createdAt: {
     allowNull: false,
     type: DataTypes.DATE,

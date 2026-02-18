@@ -9,7 +9,7 @@ import RanchCard from '../components/ranches/ranchCard'
 import EditRanchModal from '../components/ranches/editRanchModal'
 import CreateButton from '../components/create'
 
-import { Search, ArrowUpDown, TrendingUp, Building2, Truck, CalendarClock, X, ChevronUp, ChevronDown } from 'lucide-react'
+import { Search, TrendingUp, Building2, Truck, CalendarClock, X } from 'lucide-react'
 
 const Ranches = () => {
 
@@ -189,17 +189,10 @@ const Ranches = () => {
     setSortDirection(nextSortBy === "cattle" ? "desc" : "asc")
   }
 
-  const sortIndicator = (field) => {
-    if (sortBy !== field) return <ArrowUpDown className="h-3.5 w-3.5 opacity-55" />
-    return sortDirection === "asc"
-      ? <ChevronUp className="h-3.5 w-3.5 text-action-blue" />
-      : <ChevronDown className="h-3.5 w-3.5 text-action-blue" />
-  }
-
   return (
-    <div className='w-auto min-h-screen bg-background flex mx-1 lg:mx-2 py-8 lg:py-10'>
+    <div className='w-auto min-h-screen bg-background flex mx-1 lg:mx-2 pt-4 pb-8 lg:pt-5 lg:pb-9'>
 
-      <div className='w-full flex flex-col gap-7 lg:gap-8'>
+      <div className='w-full flex flex-col gap-4 lg:gap-4'>
 
         {/* Header */}
         <div className='
@@ -207,9 +200,9 @@ const Ranches = () => {
           border border-primary-border/30 dark:border-primary-border/60
           bg-gradient-to-r from-surface via-surface to-background
           dark:from-surface dark:via-surface dark:to-surface
-          px-5 py-5 lg:px-7 lg:py-6
+          p-4 lg:p-4
           shadow-sm
-          flex flex-col gap-2
+          flex flex-col gap-1.5
         '>
           <div className='flex items-center gap-3'>
             <div className='h-10 w-10 rounded-xl bg-action-blue/15 dark:bg-action-blue/20 text-action-blue flex items-center justify-center'>
@@ -224,33 +217,33 @@ const Ranches = () => {
 
         {/* Summary cards */}
         <div className='grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4'>
-          <div className='rounded-2xl border border-primary-border/30 bg-white p-4 shadow-sm'>
+          <div className='rounded-xl border border-primary-border/30 bg-white px-3.5 py-3 shadow-sm'>
             <div className='flex items-center justify-between'>
-              <span className='text-xs text-secondary uppercase tracking-wide'>Ranches</span>
-              <Building2 className='h-4 w-4 text-action-blue' />
+              <span className='text-[11px] text-secondary uppercase tracking-wide'>Ranches</span>
+              <Building2 className='h-3.5 w-3.5 text-action-blue' />
             </div>
-            <p className='mt-2 text-2xl font-semibold text-primary'>{totalRanches}</p>
+            <p className='mt-1.5 text-xl font-semibold text-primary'>{totalRanches}</p>
           </div>
-          <div className='rounded-2xl border border-primary-border/30 bg-white p-4 shadow-sm'>
+          <div className='rounded-xl border border-primary-border/30 bg-white px-3.5 py-3 shadow-sm'>
             <div className='flex items-center justify-between'>
-              <span className='text-xs text-secondary uppercase tracking-wide'>Cattle</span>
-              <span role="img" aria-label="Cow" className='text-base leading-none'>🐄</span>
+              <span className='text-[11px] text-secondary uppercase tracking-wide'>Cattle</span>
+              <span role="img" aria-label="Cow" className='text-[15px] leading-none'>🐄</span>
             </div>
-            <p className='mt-2 text-2xl font-semibold text-primary'>{totalCattle}</p>
+            <p className='mt-1.5 text-xl font-semibold text-primary'>{totalCattle}</p>
           </div>
-          <div className='rounded-2xl border border-primary-border/30 bg-white p-4 shadow-sm'>
+          <div className='rounded-xl border border-primary-border/30 bg-white px-3.5 py-3 shadow-sm'>
             <div className='flex items-center justify-between'>
-              <span className='text-xs text-secondary uppercase tracking-wide'>Active Loads</span>
-              <Truck className='h-4 w-4 text-action-blue' />
+              <span className='text-[11px] text-secondary uppercase tracking-wide'>Active Loads</span>
+              <Truck className='h-3.5 w-3.5 text-action-blue' />
             </div>
-            <p className='mt-2 text-2xl font-semibold text-primary'>{totalActiveLoads}</p>
+            <p className='mt-1.5 text-xl font-semibold text-primary'>{totalActiveLoads}</p>
           </div>
-          <div className='rounded-2xl border border-primary-border/30 bg-white p-4 shadow-sm'>
+          <div className='rounded-xl border border-primary-border/30 bg-white px-3.5 py-3 shadow-sm'>
             <div className='flex items-center justify-between'>
-              <span className='text-xs text-secondary uppercase tracking-wide'>Last Updated</span>
-              <CalendarClock className='h-4 w-4 text-action-blue' />
+              <span className='text-[11px] text-secondary uppercase tracking-wide'>Last Updated</span>
+              <CalendarClock className='h-3.5 w-3.5 text-action-blue' />
             </div>
-            <p className='mt-2 text-sm font-semibold text-primary'>
+            <p className='mt-1.5 text-[13px] font-semibold text-primary'>
               {latestUpdated ? formatDateMMDDYYYY(latestUpdated, "N/A") : "N/A"}
             </p>
           </div>
@@ -263,15 +256,15 @@ const Ranches = () => {
           lg:items-center
           lg:justify-between
           gap-4
-          p-4 lg:p-5
-          rounded-3xl
+          p-4 lg:p-4
+          rounded-2xl
           border border-primary-border/40 dark:border-primary-border/80
           bg-white dark:bg-surface/95
           shadow-sm
         '>
 
           {/* Left side: Search */}
-          <div className='relative w-full lg:w-[360px]'>
+          <div className='relative w-full lg:w-[340px]'>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary opacity-70" />
             <input
               type="text"
@@ -281,7 +274,7 @@ const Ranches = () => {
               className='
                 w-full
                 pl-10 pr-10
-                py-2.5 lg:py-3
+                py-2 lg:py-2.5
                 rounded-xl
                 border border-primary-border/50 dark:border-primary-border/80
                 bg-white dark:bg-surface/90
@@ -304,97 +297,85 @@ const Ranches = () => {
           </div>
 
           {/* Right side: Sort + Create */}
-          <div className='flex flex-wrap items-center gap-3'>
+          <div className='flex flex-wrap items-center gap-2'>
+            <div className='inline-flex items-center rounded-xl border border-primary-border/45 bg-background/70 p-1'>
+              <button
+                type="button"
+                onClick={() => handleSortChange("name")}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  sortBy === "name"
+                    ? "bg-white text-primary shadow-sm"
+                    : "text-secondary hover:text-primary"
+                }`}
+              >
+                Name {sortBy === "name" ? (sortDirection === "asc" ? "↑" : "↓") : ""}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSortChange("cattle")}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  sortBy === "cattle"
+                    ? "bg-white text-primary shadow-sm"
+                    : "text-secondary hover:text-primary"
+                }`}
+              >
+                Cattle {sortBy === "cattle" ? (sortDirection === "asc" ? "↑" : "↓") : ""}
+              </button>
+            </div>
 
             <CreateButton text="Create Ranch" onClick={handleCreate} />
 
           </div>
         </div>
 
-        <div className='w-full rounded-3xl border border-primary-border/30 bg-white p-3 md:p-4 shadow-sm'>
-          <div className='
-            hidden lg:grid
-            lg:grid-cols-[minmax(260px,1.45fr)_minmax(230px,1fr)_minmax(150px,0.7fr)_minmax(110px,0.4fr)_minmax(120px,0.45fr)_minmax(150px,0.65fr)_56px]
-            items-center
-            px-5 py-3
-            text-xs uppercase tracking-wide text-secondary
-          '>
-            <button
-              type="button"
-              onClick={() => handleSortChange("name")}
-              className={`inline-flex items-center gap-1.5 justify-start text-left hover:text-primary transition ${
-                sortBy === "name" ? "text-primary" : ""
-              }`}
-            >
-              Ranch
-              {sortIndicator("name")}
-            </button>
-            <span>Location</span>
-            <span>Manager</span>
-            <button
-              type="button"
-              onClick={() => handleSortChange("cattle")}
-              className={`inline-flex items-center gap-1.5 justify-start text-left hover:text-primary transition ${
-                sortBy === "cattle" ? "text-primary" : ""
-              }`}
-            >
-              Cattle
-              {sortIndicator("cattle")}
-            </button>
-            <span>Loads</span>
-            <span>Updated</span>
-            <span className='sr-only'>Actions</span>
+        {totalRanches === 0 ? (
+          <div className='rounded-2xl border border-dashed border-primary-border/45 bg-background/30 p-8 text-center'>
+            <h3 className='text-primary text-lg font-semibold'>No ranches yet</h3>
+            <p className='mt-2 text-sm text-secondary'>Create your first ranch to start managing inventory, historical data, and loads.</p>
+            <div className='mt-5 flex justify-center'>
+              <CreateButton text="Create first ranch" onClick={handleCreate} />
+            </div>
           </div>
-
-          {totalRanches === 0 ? (
-            <div className='rounded-2xl border border-dashed border-primary-border/45 bg-background/30 p-8 text-center'>
-              <h3 className='text-primary text-lg font-semibold'>No ranches yet</h3>
-              <p className='mt-2 text-sm text-secondary'>Create your first ranch to start managing inventory, historical data, and loads.</p>
-              <div className='mt-5 flex justify-center'>
-                <CreateButton text="Create first ranch" onClick={handleCreate} />
+        ) : filteredRanches.length === 0 ? (
+          <div className='rounded-2xl border border-dashed border-primary-border/45 bg-background/30 p-8 text-center'>
+            <h3 className='text-primary text-lg font-semibold'>No matching ranches</h3>
+            <p className='mt-2 text-sm text-secondary'>Adjust your search to find a ranch.</p>
+            {search && (
+              <div className='mt-4 flex justify-center'>
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className='rounded-lg border border-primary-border/50 px-4 py-2 text-sm text-primary hover:bg-primary-border/10 transition'
+                >
+                  Clear search
+                </button>
               </div>
-            </div>
-          ) : filteredRanches.length === 0 ? (
-            <div className='rounded-2xl border border-dashed border-primary-border/45 bg-background/30 p-8 text-center'>
-              <h3 className='text-primary text-lg font-semibold'>No matching ranches</h3>
-              <p className='mt-2 text-sm text-secondary'>Adjust your search to find a ranch.</p>
-              {search && (
-                <div className='mt-4 flex justify-center'>
-                  <button
-                    type="button"
-                    onClick={() => setSearch("")}
-                    className='rounded-lg border border-primary-border/50 px-4 py-2 text-sm text-primary hover:bg-primary-border/10 transition'
-                  >
-                    Clear search
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className='flex flex-col gap-3'>
-              {filteredRanches.map(ranch => (
-                <RanchCard
-                  key={ranch.id}
-                  ranchId={ranch.id}
-                  ranchName={ranch.name}
-                  ranchAddress={ranch.address}
-                  ranchCity={ranch.city}
-                  ranchZipCode={ranch.zipCode}
-                  ranchState={ranch.state}
-                  ranchColor={ranch.color}
-                  totalCattle={ranch.totalCattle}
-                  activeLots={ranch.activeLots}
-                  managerName={ranch.managerName}
-                  lastUpdated={ranch.lastUpdated}
-                  isHighlighted={highlightRanchId === ranch.id}
-                  onClick={() => handleSelect(ranch)}
-                  onEdit={() => handleEdit(ranch)}
-                  onDelete={() => handleDelete(ranch)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        ) : (
+          <div className='grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4'>
+            {filteredRanches.map(ranch => (
+              <RanchCard
+                key={ranch.id}
+                ranchId={ranch.id}
+                ranchName={ranch.name}
+                ranchAddress={ranch.address}
+                ranchCity={ranch.city}
+                ranchZipCode={ranch.zipCode}
+                ranchState={ranch.state}
+                ranchColor={ranch.color}
+                totalCattle={ranch.totalCattle}
+                activeLots={ranch.activeLots}
+                managerName={ranch.managerName}
+                lastUpdated={ranch.lastUpdated}
+                isHighlighted={highlightRanchId === ranch.id}
+                onClick={() => handleSelect(ranch)}
+                onEdit={() => handleEdit(ranch)}
+                onDelete={() => handleDelete(ranch)}
+              />
+            ))}
+          </div>
+        )}
 
         {editingRanch && (
           <EditRanchModal

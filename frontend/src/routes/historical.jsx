@@ -18,6 +18,7 @@ import CalfDetailPanel from "../components/calves/calfDetailPanel"
 import CalfEditModal from "../components/calves/calfEditModal"
 import { RanchPageSkeleton } from "../components/shared/loadingSkeletons"
 import { getWeightBracketLabel, normalizeWeightBrackets } from "../utils/weightBrackets"
+import { formatSexLabel } from "../utils/sexLabel"
 
 const parseDateToLocalDayStart = (value) => {
   if (!value) return null
@@ -68,6 +69,7 @@ const Historical = () => {
     const [mainSearchField, setMainSearchField] = useState("all")
     const [mainBreed, setMainBreed] = useState([])
     const [mainSeller, setMainSeller] = useState([])
+    const [mainSex, setMainSex] = useState([])
     const [mainStatus, setMainStatus] = useState("")
     const [mainWeightBracket, setMainWeightBracket] = useState("")
     const [mainDateFrom, setMainDateFrom] = useState("")
@@ -75,10 +77,12 @@ const Historical = () => {
     const [mainRowLimit, setMainRowLimit] = useState(15)
 
     const [breedFilterSeller, setBreedFilterSeller] = useState([])
+    const [breedFilterSex, setBreedFilterSex] = useState([])
     const [breedDateFrom, setBreedDateFrom] = useState("")
     const [breedDateTo, setBreedDateTo] = useState("")
 
     const [sellerFilterBreed, setSellerFilterBreed] = useState([])
+    const [sellerFilterSex, setSellerFilterSex] = useState([])
     const [sellerDateFrom, setSellerDateFrom] = useState("")
     const [sellerDateTo, setSellerDateTo] = useState("")
     const [breedSummarySort, setBreedSummarySort] = useState({ key: "totalCalves", direction: "desc" })
@@ -122,7 +126,7 @@ const Historical = () => {
       { key: "dateIn", label: "Date In" },
       { key: "breed", label: "Breed" },
       { key: "sex", label: "Sex" },
-      { key: "purchasePrice", label: "Purchase Price" },
+      { key: "purchasePrice", label: "Paid Price" },
       { key: "sellPrice", label: "Sell Price" },
       { key: "status", label: "Status", align: "right" },
     ]
@@ -219,6 +223,10 @@ const Historical = () => {
       () => [...new Set(calves.map((calf) => calf.seller).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))),
       [calves]
     )
+    const sexOptions = useMemo(
+      () => [...new Set(calves.map((calf) => calf.sex).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))),
+      [calves]
+    )
     const effectiveWeightBrackets = useMemo(
       () => normalizeWeightBrackets(ranch?.weightCategories),
       [ranch?.weightCategories]
@@ -281,10 +289,13 @@ const Historical = () => {
             : matchesSearchValue(searchValue)
         const breedFilterValues = asArray(filters.breed)
         const sellerFilterValues = asArray(filters.seller)
+        const sexFilterValues = asArray(filters.sex).map((value) => String(value || "").toLowerCase().trim()).filter(Boolean)
         const statusFilterValues = asArray(filters.status)
         const weightBracketFilter = String(filters.weightBracket || "")
         const breedMatch = breedFilterValues.length === 0 || breedFilterValues.includes(calf.breed)
         const sellerMatch = sellerFilterValues.length === 0 || sellerFilterValues.includes(calf.seller)
+        const calfSex = String(calf.sex || "").toLowerCase().trim()
+        const sexMatch = sexFilterValues.length === 0 || sexFilterValues.includes(calfSex)
         const statusKey = normalizeStatus(calf)
         const statusMatch = statusFilterValues.length === 0 || statusFilterValues.includes(statusKey)
         const weightBracket = getWeightBracketLabel(calf.weight, filters.weightBrackets, calf.breed)
@@ -293,7 +304,7 @@ const Historical = () => {
         const rawDate = calf.dateIn || calf.placedDate
         const dateRangeMatch = isDateInDateRange(rawDate, filters.dateFrom, filters.dateTo)
 
-        return searchMatch && breedMatch && sellerMatch && statusMatch && weightBracketMatch && dateRangeMatch
+        return searchMatch && breedMatch && sellerMatch && sexMatch && statusMatch && weightBracketMatch && dateRangeMatch
       })
     }, [normalizeSearchValue, normalizeStatus])
 
@@ -340,22 +351,23 @@ const Historical = () => {
         searchField: mainSearchField,
         breed: mainBreed,
         seller: mainSeller,
+        sex: mainSex,
         status: mainStatus,
         weightBracket: mainWeightBracket,
         weightBrackets: effectiveWeightBrackets,
         dateFrom: mainDateFrom,
         dateTo: mainDateTo,
       }),
-      [applyCalfFilters, calves, mainSearch, mainSearchMode, mainSearchMatch, mainSearchField, mainBreed, mainSeller, mainStatus, mainWeightBracket, effectiveWeightBrackets, mainDateFrom, mainDateTo]
+      [applyCalfFilters, calves, mainSearch, mainSearchMode, mainSearchMatch, mainSearchField, mainBreed, mainSeller, mainSex, mainStatus, mainWeightBracket, effectiveWeightBrackets, mainDateFrom, mainDateTo]
     )
     const filteredBreedCalves = useMemo(
-      () => applyCalfFilters(calves, { search: "", breed: breedFilterSeller, seller: [], dateFrom: breedDateFrom, dateTo: breedDateTo }),
-      [applyCalfFilters, calves, breedFilterSeller, breedDateFrom, breedDateTo]
+      () => applyCalfFilters(calves, { search: "", breed: breedFilterSeller, seller: [], sex: breedFilterSex, dateFrom: breedDateFrom, dateTo: breedDateTo }),
+      [applyCalfFilters, calves, breedFilterSeller, breedFilterSex, breedDateFrom, breedDateTo]
     )
 
     const filteredSellerCalves = useMemo(
-      () => applyCalfFilters(calves, { search: "", breed: [], seller: sellerFilterBreed, dateFrom: sellerDateFrom, dateTo: sellerDateTo }),
-      [applyCalfFilters, calves, sellerFilterBreed, sellerDateFrom, sellerDateTo]
+      () => applyCalfFilters(calves, { search: "", breed: [], seller: sellerFilterBreed, sex: sellerFilterSex, dateFrom: sellerDateFrom, dateTo: sellerDateTo }),
+      [applyCalfFilters, calves, sellerFilterBreed, sellerFilterSex, sellerDateFrom, sellerDateTo]
     )
 
     const tableRows = useMemo(() => (
@@ -368,9 +380,7 @@ const Historical = () => {
         breed: calf.breed
           ? calf.breed.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
           : "-",
-        sex: calf.sex
-          ? calf.sex.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
-          : "-",
+        sex: formatSexLabel(calf.sex),
         status: renderStatusBadge(normalizeStatus(calf)),
         purchasePrice: formatMoneyCell(calf.purchasePrice ?? calf.price),
         sellPrice: formatMoneyCell(calf.sellPrice)
@@ -474,15 +484,42 @@ const Historical = () => {
 
     const saveEditedCalf = async (form) => {
       if (!selectedCalf?.id || !token) return
+
+      const normalizedPrimaryID = String(form.primaryID || "").trim()
+      const normalizedDateIn = String(form.dateIn || "").trim()
+      const normalizedBreed = String(form.breed || "").trim()
+      const normalizedSeller = String(form.seller || "").trim()
+
+      if (!normalizedPrimaryID || !normalizedDateIn || !normalizedBreed || !normalizedSeller) {
+        showError("Visual Tag, Date In, Breed, and Seller are required.")
+        return
+      }
+
+      const normalizedStatus = String(form.status || "").toLowerCase().trim()
+      const normalizedSex = String(form.sex || "").toLowerCase().trim()
+
       try {
         setIsSaving(true)
         const payload = {
           ...form,
+          primaryID: normalizedPrimaryID,
+          dateIn: normalizedDateIn,
+          breed: normalizedBreed,
+          seller: normalizedSeller,
+          EID: String(form.EID || "").trim(),
+          backTag: String(form.backTag || "").trim(),
+          sex: normalizedSex || undefined,
+          dairy: String(form.dairy || "").trim(),
+          proteinTest: String(form.proteinTest || "").trim(),
+          shippedTo: String(form.shippedTo || "").trim(),
           weight: toNumberOrNull(form.weight),
           purchasePrice: toNumberOrNull(form.purchasePrice),
           sellPrice: toNumberOrNull(form.sellPrice),
           proteinLevel: toNumberOrNull(form.proteinLevel),
           preDaysOnFeed: toNumberOrNull(form.preDaysOnFeed),
+          deathDate: form.deathDate || null,
+          shippedOutDate: form.shippedOutDate || null,
+          status: normalizedStatus || undefined,
         }
 
         const updated = await updateCalf(selectedCalf.id, payload, token)
@@ -493,6 +530,8 @@ const Historical = () => {
         setMovementHistory(history)
         setIsEditing(false)
       } catch (error) {
+        const message = error?.response?.data?.message || "Could not update calf."
+        showError(message)
         console.error("Error updating calf:", error)
       } finally {
         setIsSaving(false)
@@ -515,6 +554,7 @@ const Historical = () => {
         searchField: mainSearchField,
         breed: mainBreed,
         seller: mainSeller,
+        sex: mainSex,
         status: mainStatus,
         weightBracket: mainWeightBracket,
         weightBrackets: effectiveWeightBrackets,
@@ -529,9 +569,9 @@ const Historical = () => {
         "Date In": formatDateForExport(calf.dateIn || calf.placedDate),
         "Weight Bracket": getWeightBracketLabel(calf.weight, effectiveWeightBrackets, calf.breed),
         Breed: calf.breed || "",
-        Sex: calf.sex || "",
+        Sex: formatSexLabel(calf.sex, ""),
         Weight: calf.weight ?? "",
-        "Purchase Price": calf.purchasePrice ?? calf.price ?? "",
+        "Paid Price": calf.purchasePrice ?? calf.price ?? "",
         "Sell Price": calf.sellPrice ?? "",
         Seller: calf.seller || "",
         Dairy: calf.dairy || "",
@@ -541,8 +581,8 @@ const Historical = () => {
         "Death Date": formatDateForExport(calf.deathDate),
         "Shipped Out Date": formatDateForExport(calf.shippedOutDate),
         "Shipped To": calf.shippedTo || "",
-        "Pre Days On Feed": calf.preDaysOnFeed ?? "",
-        "Days On Feed": calculateDaysOnFeed(calf),
+        "Pre DOF": calf.preDaysOnFeed ?? "",
+        DOF: calculateDaysOnFeed(calf),
         "Origin Ranch ID": calf.originRanchID ?? "",
         "Current Ranch ID": calf.currentRanchID ?? "",
       }))
@@ -684,17 +724,21 @@ const Historical = () => {
                   className="w-full"
                   breed={mainBreed}
                   seller={mainSeller}
+                  sex={mainSex}
                   status={mainStatus}
                   weightBracket={mainWeightBracket}
                   breedOptions={breedOptions}
                   sellerOptions={sellerOptions}
+                  sexOptions={sexOptions}
                   statusOptions={["feeding", "shipped", "sold", "alive", "dead"]}
                   weightBracketOptions={weightBracketOptions}
+                  showSex
                   showStatus
                   showWeightBracket
-                  onChange={({ breed, seller, status, weightBracket }) => {
+                  onChange={({ breed, seller, sex, status, weightBracket }) => {
                     setMainBreed(Array.isArray(breed) ? breed : (breed ? [breed] : []))
                     setMainSeller(Array.isArray(seller) ? seller : (seller ? [seller] : []))
+                    setMainSex(Array.isArray(sex) ? sex : (sex ? [sex] : []))
                     setMainStatus(status || "")
                     setMainWeightBracket(weightBracket || "")
                   }}
@@ -742,6 +786,7 @@ const Historical = () => {
                     setMainSearchField("all")
                     setMainBreed([])
                     setMainSeller([])
+                    setMainSex([])
                     setMainStatus("")
                     setMainWeightBracket("")
                     setMainDateFrom("")
@@ -765,12 +810,16 @@ const Historical = () => {
                 <BreedSellerFilterMenu
                   className="w-[150px] shrink-0"
                   breed={breedFilterSeller}
+                  sex={breedFilterSex}
                   seller={[]}
                   showBreed
+                  showSex
                   showSeller={false}
                   breedOptions={breedOptions}
-                  onChange={({ breed }) => {
+                  sexOptions={sexOptions}
+                  onChange={({ breed, sex }) => {
                     setBreedFilterSeller(Array.isArray(breed) ? breed : (breed ? [breed] : []))
+                    setBreedFilterSex(Array.isArray(sex) ? sex : (sex ? [sex] : []))
                   }}
                 />
                 <DateFilterMenu
@@ -787,6 +836,7 @@ const Historical = () => {
                   className="w-[90px] shrink-0 rounded-lg border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
                   onClick={() => {
                     setBreedFilterSeller([])
+                    setBreedFilterSex([])
                     setBreedDateFrom("")
                     setBreedDateTo("")
                   }}
@@ -841,11 +891,15 @@ const Historical = () => {
                   className="w-[150px] shrink-0"
                   breed={[]}
                   seller={sellerFilterBreed}
+                  sex={sellerFilterSex}
                   showBreed={false}
+                  showSex
                   showSeller
                   sellerOptions={sellerOptions}
-                  onChange={({ seller }) => {
+                  sexOptions={sexOptions}
+                  onChange={({ seller, sex }) => {
                     setSellerFilterBreed(Array.isArray(seller) ? seller : (seller ? [seller] : []))
+                    setSellerFilterSex(Array.isArray(sex) ? sex : (sex ? [sex] : []))
                   }}
                 />
                 <DateFilterMenu
@@ -862,6 +916,7 @@ const Historical = () => {
                   className="w-[90px] shrink-0 rounded-lg border border-primary-border/40 px-3 py-1.5 text-xs hover:bg-primary-border/10"
                   onClick={() => {
                     setSellerFilterBreed([])
+                    setSellerFilterSex([])
                     setSellerDateFrom("")
                     setSellerDateTo("")
                   }}

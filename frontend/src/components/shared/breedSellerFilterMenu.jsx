@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { SlidersHorizontal, Search, X } from "lucide-react"
+import { formatSexLabel } from "../../utils/sexLabel"
 
 const toArray = (value) => {
   if (Array.isArray(value)) return value.filter(Boolean)
@@ -11,15 +12,18 @@ const toTitleCase = (value) => String(value || "").toLowerCase().replace(/\b\w/g
 const BreedSellerFilterMenu = ({
   breed,
   seller,
+  sex,
   status = "",
   weightBracket = "",
   breedOptions = [],
   sellerOptions = [],
+  sexOptions = [],
   statusOptions = [],
   weightBracketOptions = [],
   onChange,
   showBreed = true,
   showSeller = true,
+  showSex = false,
   showStatus = false,
   showWeightBracket = false,
   className = "",
@@ -31,6 +35,7 @@ const BreedSellerFilterMenu = ({
   const [sellerSearch, setSellerSearch] = useState("")
   const selectedBreeds = useMemo(() => toArray(breed), [breed])
   const selectedSellers = useMemo(() => toArray(seller), [seller])
+  const selectedSex = useMemo(() => toArray(sex), [sex])
   const selectedStatus = String(status || "")
   const selectedWeightBracket = String(weightBracket || "")
   const visibleBreedOptions = useMemo(
@@ -57,11 +62,12 @@ const BreedSellerFilterMenu = ({
     const parts = []
     if (showBreed && selectedBreeds.length > 0) parts.push(`Breed: ${selectedBreeds.length}`)
     if (showSeller && selectedSellers.length > 0) parts.push(`Seller: ${selectedSellers.length}`)
+    if (showSex && selectedSex.length > 0) parts.push(`Sex: ${selectedSex.length}`)
     if (showStatus && selectedStatus) parts.push(`Status: ${toTitleCase(selectedStatus)}`)
     if (showWeightBracket && selectedWeightBracket) parts.push(`Bracket: ${selectedWeightBracket}`)
     if (parts.length === 0) return "Filter"
     return parts.join(" | ")
-  }, [selectedBreeds.length, selectedSellers.length, selectedStatus, selectedWeightBracket, showBreed, showSeller, showStatus, showWeightBracket])
+  }, [selectedBreeds.length, selectedSellers.length, selectedSex.length, selectedStatus, selectedWeightBracket, showBreed, showSeller, showSex, showStatus, showWeightBracket])
 
   const toggleOption = (current, value) => {
     if (!value) return current
@@ -114,6 +120,7 @@ const BreedSellerFilterMenu = ({
                         onChange={() => onChange({
                           breed: toggleOption(selectedBreeds, option),
                           seller: selectedSellers,
+                          sex: selectedSex,
                           status: selectedStatus,
                           weightBracket: selectedWeightBracket
                         })}
@@ -156,11 +163,37 @@ const BreedSellerFilterMenu = ({
                         onChange={() => onChange({
                           breed: selectedBreeds,
                           seller: toggleOption(selectedSellers, option),
+                          sex: selectedSex,
                           status: selectedStatus,
                           weightBracket: selectedWeightBracket
                         })}
                       />
                       <span>{toTitleCase(option)}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {showSex && (
+              <div>
+                <label className="text-[11px] font-semibold text-secondary uppercase tracking-wide">Sex</label>
+                <div className="mt-1 max-h-32 overflow-y-auto rounded-lg border border-primary-border/30 p-2">
+                  {sexOptions.length === 0 && <p className="text-xs text-secondary">No sexes</p>}
+                  {sexOptions.map((option) => (
+                    <label key={option} className="flex items-center gap-2 py-1 text-xs text-primary-text">
+                      <input
+                        type="checkbox"
+                        checked={selectedSex.includes(option)}
+                        onChange={() => onChange({
+                          breed: selectedBreeds,
+                          seller: selectedSellers,
+                          sex: toggleOption(selectedSex, option),
+                          status: selectedStatus,
+                          weightBracket: selectedWeightBracket
+                        })}
+                      />
+                      <span>{formatSexLabel(option, toTitleCase(option))}</span>
                     </label>
                   ))}
                 </div>
@@ -176,6 +209,7 @@ const BreedSellerFilterMenu = ({
                   onChange={(e) => onChange({
                     breed: selectedBreeds,
                     seller: selectedSellers,
+                    sex: selectedSex,
                     status: e.target.value,
                     weightBracket: selectedWeightBracket
                   })}
@@ -197,6 +231,7 @@ const BreedSellerFilterMenu = ({
                   onChange={(e) => onChange({
                     breed: selectedBreeds,
                     seller: selectedSellers,
+                    sex: selectedSex,
                     status: selectedStatus,
                     weightBracket: e.target.value
                   })}
@@ -215,7 +250,7 @@ const BreedSellerFilterMenu = ({
               onClick={() => {
                 setBreedSearch("")
                 setSellerSearch("")
-                onChange({ breed: [], seller: [], status: "", weightBracket: "" })
+                onChange({ breed: [], seller: [], sex: [], status: "", weightBracket: "" })
               }}
             >
               Reset

@@ -105,13 +105,13 @@ const Load = () => {
       <div className="flex h-full w-full flex-col lg:flex-row">
         <div className={`${isSlideOpen ? "lg:w-[38%]" : "lg:w-full"} h-full overflow-y-auto transition-all duration-200`}>
           {!isLoads ? (
-            <div className="mx-auto flex h-full w-full max-w-4xl flex-col items-start justify-center gap-4 px-6 py-10">
+            <div className="mx-auto flex h-full w-full max-w-4xl flex-col items-center justify-center gap-4 px-6 py-10 text-center">
               <div className="inline-flex items-center gap-2 rounded-full border border-primary-border/40 bg-primary-border/10 px-3 py-1 text-xs font-medium text-primary-text">
                 <Truck className="size-3.5" />
                 Loads
               </div>
               <h1 className="text-2xl font-semibold text-primary-text">No load orders yet</h1>
-              <p className="max-w-xl text-sm text-secondary">
+              <p className="max-w-2xl text-sm text-secondary">
                 Start by creating your first shipping order. You can select calves in bulk and track destination, dates, and trucking details.
               </p>
               <CreateLoadBtn onOpen={handleCreateLoad} />

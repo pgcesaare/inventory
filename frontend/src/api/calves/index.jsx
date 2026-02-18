@@ -105,15 +105,17 @@ export const getManageCalvesByRanch = async (id, token) => {
     }
 }
 
-export const createCalf = async (calf, token) => {
+export const createCalf = async (calf, token, options = {}) => {
     try {
+      const extraHeaders = options?.headers && typeof options.headers === "object" ? options.headers : {}
       const response = await api.post(`/calves`, calf, 
         { 
         
             headers: 
             { 
               Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
+              ...extraHeaders,
             } 
         
         })

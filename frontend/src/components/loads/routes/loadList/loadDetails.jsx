@@ -11,6 +11,7 @@ import { getRanches } from "../../../../api/ranches"
 import { deleteLoad, updateLoad, updateLoadCalfArrivalStatus } from "../../../../api/loads"
 import StyledDateInput from "../../../shared/styledDateInput"
 import { formatDateMMDDYYYY, formatDateTimeMMDDYYYY } from "../../../../utils/dateFormat"
+import { formatSexLabel } from "../../../../utils/sexLabel"
 
 dayjs.extend(utc)
 
@@ -170,6 +171,7 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
   const { ranch, showSuccess, showError, confirmAction } = useAppContext()
   const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" })
   const [breedFilter, setBreedFilter] = useState("")
+  const [sexFilter, setSexFilter] = useState("")
   const [filterOpen, setFilterOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchValue, setSearchValue] = useState("")
@@ -237,6 +239,10 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
     () => [...new Set((load?.calves || []).map((calf) => calf?.breed).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))),
     [load?.calves]
   )
+  const sexOptions = useMemo(
+    () => [...new Set((load?.calves || []).map((calf) => calf?.sex).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))),
+    [load?.calves]
+  )
 
   const filteredCalves = useMemo(() => {
     const source = load?.calves || []
@@ -248,6 +254,7 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
 
     return source.filter((calf) => {
       const matchesBreed = !breedFilter || calf?.breed === breedFilter
+      const matchesSex = !sexFilter || String(calf?.sex || "").toLowerCase().trim() === String(sexFilter || "").toLowerCase().trim()
       const searchableValuesByField = {
         visualTag: [calf?.primaryID],
         eid: [calf?.EID],
@@ -271,9 +278,9 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
           ? searchTokens.length === 0 || searchTokens.some((token) => matchesToken(token))
           : matchesToken(normalizedSearch)
 
-      return matchesBreed && matchesSearch
+      return matchesBreed && matchesSex && matchesSearch
     })
-  }, [load?.calves, breedFilter, searchValue, searchMode, searchMatchMode, searchField])
+  }, [load?.calves, breedFilter, sexFilter, searchValue, searchMode, searchMatchMode, searchField])
 
   const sortedCalves = useMemo(() => {
     if (!sortConfig.key) return filteredCalves
@@ -396,7 +403,7 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [breedFilter, searchValue, searchMode, searchMatchMode, searchField, safeRowLimit, sortConfig.key, sortConfig.direction])
+  }, [breedFilter, sexFilter, searchValue, searchMode, searchMatchMode, searchField, safeRowLimit, sortConfig.key, sortConfig.direction])
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages)
@@ -500,13 +507,13 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
       EID: calf.EID || "",
       "Back Tag": calf.originalID || calf.backTag || "",
       Breed: calf.breed || "",
-      Sex: calf.sex || "",
+      Sex: formatSexLabel(calf.sex, ""),
       Seller: calf.seller || "",
       Status: calf.status || "",
       "Load Arrival Status": getCalfArrivalStatusLabel(calf.arrivalStatus),
       "Date In": formatDate(calf.placedDate || calf.dateIn),
-      "Days On Feed At Shipment": getLoadCalfDaysOnFeed(calf),
-      "Purchase Price": calf.price ?? calf.purchasePrice ?? "",
+      "DOF At Shipment": getLoadCalfDaysOnFeed(calf),
+      "Paid Price": calf.price ?? calf.purchasePrice ?? "",
       "Sell Price": calf.sellPrice ?? "",
       "Shipped Out Date": formatDate(calf.shippedOutDate),
       "Shipped To": calf.shippedTo || "",
@@ -917,7 +924,7 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
           <p className="mt-1 text-sm font-semibold text-primary-text">{load.headCount || 0}</p>
         </div>
         <div className="rounded-xl border border-primary-border/30 bg-white p-3">
-          <p className="text-xs text-secondary">Average Days On Feed</p>
+          <p className="text-xs text-secondary">Average DOF</p>
           <p className="mt-1 text-sm font-semibold text-primary-text">{averageDaysOnFeedLabel}</p>
         </div>
       </div>
@@ -995,10 +1002,24 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
                       <option key={option} value={option}>{toTitleCase(option)}</option>
                     ))}
                   </select>
+                  <label className="mt-2 block text-[11px] font-semibold text-secondary uppercase tracking-wide">Sex</label>
+                  <select
+                    className="mt-1 w-full rounded-lg border border-primary-border/40 px-2.5 py-1.5 text-xs"
+                    value={sexFilter}
+                    onChange={(event) => setSexFilter(event.target.value)}
+                  >
+                    <option value="">All sexes</option>
+                    {sexOptions.map((option) => (
+                      <option key={option} value={option}>{formatSexLabel(option, toTitleCase(option))}</option>
+                    ))}
+                  </select>
                   <button
                     type="button"
                     className="mt-2 w-full rounded-lg border border-primary-border/40 px-2.5 py-1.5 text-xs hover:bg-primary-border/10"
-                    onClick={() => setBreedFilter("")}
+                    onClick={() => {
+                      setBreedFilter("")
+                      setSexFilter("")
+                    }}
                   >
                     Reset
                   </button>
@@ -1157,7 +1178,7 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
                 <th className="text-left px-3 py-2 text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("primaryID")}>Visual Tag <span>{sortConfig.key === "primaryID" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
                 <th className="text-left px-3 py-2 text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("dateIn")}>Date In <span>{sortConfig.key === "dateIn" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
                 <th className="text-left px-3 py-2 text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("breed")}>Breed <span>{sortConfig.key === "breed" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
-                <th className="text-right px-3 py-2 text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("daysOnFeed")}>Days On Feed <span>{sortConfig.key === "daysOnFeed" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
+                <th className="text-right px-3 py-2 text-xs"><button type="button" className="inline-flex items-center gap-1 cursor-pointer" onClick={() => toggleSort("daysOnFeed")}>DOF <span>{sortConfig.key === "daysOnFeed" ? (sortConfig.direction === "asc" ? "▲" : "▼") : "↕"}</span></button></th>
                 <th className="text-right px-3 py-2 text-xs">Actions</th>
               </tr>
             </thead>
@@ -1259,7 +1280,7 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
               <tr>
                 <th className="px-3 py-2 text-left text-xs">Breed</th>
                 <th className="px-3 py-2 text-right text-xs">Total Calves</th>
-                <th className="px-3 py-2 text-right text-xs">Avg Days On Feed</th>
+                <th className="px-3 py-2 text-right text-xs">Avg DOF</th>
               </tr>
             </thead>
             <tbody>

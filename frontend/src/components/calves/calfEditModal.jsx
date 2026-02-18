@@ -61,6 +61,8 @@ const calculateDaysOnFeed = (calf) => {
   return elapsed + preDays
 }
 
+const RequiredMark = () => <span className="ml-0.5 text-red-600">*</span>
+
 const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false, breedOptions = [], sellerOptions = [] }) => {
   const [form, setForm] = useState({
     primaryID: "",
@@ -161,12 +163,12 @@ const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false, breed
         </div>
 
         <form onSubmit={submit} className="p-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div><label className="text-xs font-semibold text-secondary">Visual Tag</label><input className={fieldClass} value={form.primaryID} onChange={(e) => setField("primaryID", e.target.value)} /></div>
+          <div><label className="text-xs font-semibold text-secondary">Visual Tag<RequiredMark /></label><input className={fieldClass} value={form.primaryID} onChange={(e) => setField("primaryID", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">EID</label><input className={fieldClass} value={form.EID} onChange={(e) => setField("EID", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Back Tag</label><input className={fieldClass} value={form.backTag} onChange={(e) => setField("backTag", e.target.value)} /></div>
-          <div><label className="text-xs font-semibold text-secondary">Date In</label><StyledDateInput inputClassName={fieldClass} value={form.dateIn} onChange={(e) => setField("dateIn", e.target.value)} ariaLabel="Open date in picker" /></div>
+          <div><label className="text-xs font-semibold text-secondary">Date In<RequiredMark /></label><StyledDateInput inputClassName={fieldClass} value={form.dateIn} onChange={(e) => setField("dateIn", e.target.value)} ariaLabel="Open date in picker" /></div>
           <div>
-            <label className="text-xs font-semibold text-secondary">Breed</label>
+            <label className="text-xs font-semibold text-secondary">Breed<RequiredMark /></label>
             <div className="relative" ref={breedMenuRef}>
               <button
                 type="button"
@@ -228,10 +230,10 @@ const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false, breed
           </div>
           <div><label className="text-xs font-semibold text-secondary">Sex</label><input className={`${fieldClass} capitalize`} value={form.sex} onChange={(e) => setField("sex", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Weight</label><input className={fieldClass} value={form.weight} onChange={(e) => setField("weight", e.target.value)} /></div>
-          <div><label className="text-xs font-semibold text-secondary">Purchase Price</label><input className={fieldClass} value={form.purchasePrice} onChange={(e) => setField("purchasePrice", e.target.value)} /></div>
+          <div><label className="text-xs font-semibold text-secondary">Paid Price</label><input className={fieldClass} value={form.purchasePrice} onChange={(e) => setField("purchasePrice", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Sell Price</label><input className={fieldClass} value={form.sellPrice} onChange={(e) => setField("sellPrice", e.target.value)} /></div>
           <div>
-            <label className="text-xs font-semibold text-secondary">Seller</label>
+            <label className="text-xs font-semibold text-secondary">Seller<RequiredMark /></label>
             <div className="relative" ref={sellerMenuRef}>
               <button
                 type="button"
@@ -299,7 +301,7 @@ const CalfEditModal = ({ calf, onClose, onSave, onDelete, loading = false, breed
           <div><label className="text-xs font-semibold text-secondary">Shipped Out Date</label><StyledDateInput inputClassName={fieldClass} value={form.shippedOutDate} onChange={(e) => setField("shippedOutDate", e.target.value)} ariaLabel="Open shipped out date picker" /></div>
           <div><label className="text-xs font-semibold text-secondary">Shipped To</label><input className={fieldClass} value={form.shippedTo} onChange={(e) => setField("shippedTo", e.target.value)} /></div>
           <div><label className="text-xs font-semibold text-secondary">Pre-Days-On-Feed</label><input className={fieldClass} value={form.preDaysOnFeed} onChange={(e) => setField("preDaysOnFeed", e.target.value)} /></div>
-          <div><label className="text-xs font-semibold text-secondary">Days On Feed (calculated)</label><input className={`${fieldClass} bg-primary-border/10`} value={calculateDaysOnFeed({ ...calf, preDaysOnFeed: form.preDaysOnFeed })} readOnly disabled /></div>
+          <div><label className="text-xs font-semibold text-secondary">DOF (calculated)</label><input className={`${fieldClass} bg-primary-border/10`} value={calculateDaysOnFeed({ ...calf, preDaysOnFeed: form.preDaysOnFeed })} readOnly disabled /></div>
 
           <div className="md:col-span-2 flex justify-end gap-3 pt-4 border-t border-primary-border/30">
             {onDelete && (

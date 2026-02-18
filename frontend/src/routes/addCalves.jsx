@@ -46,6 +46,8 @@ const HEADER_MAP = {
   weightoptional: "weight",
   purchaseprice: "purchasePrice",
   purchasepriceoptional: "purchasePrice",
+  paidprice: "purchasePrice",
+  paidpriceoptional: "purchasePrice",
   sellprice: "sellPrice",
   sellpriceoptional: "sellPrice",
   seller: "seller",
@@ -70,6 +72,10 @@ const HEADER_MAP = {
   daysonfeedoptional: "preDaysOnFeed",
   predaysonfeed: "preDaysOnFeed",
   predaysonfeedoptional: "preDaysOnFeed",
+  dof: "preDaysOnFeed",
+  dofoptional: "preDaysOnFeed",
+  predof: "preDaysOnFeed",
+  predofoptional: "preDaysOnFeed",
 }
 
 const toKey = (value) =>
@@ -79,6 +85,89 @@ const toKey = (value) =>
 
 const cleanText = (value) => String(value ?? "").trim()
 const toTitleCase = (value) => cleanText(value).toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
+const removeDiacritics = (value) => cleanText(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+const normalizeLookupText = (value) => removeDiacritics(value)
+  .toLowerCase()
+  .replace(/[^a-z0-9\s]/g, " ")
+  .replace(/\s+/g, " ")
+  .trim()
+const collapseLookupText = (value) => normalizeLookupText(value).replace(/\s+/g, "")
+
+const levenshteinDistance = (left = "", right = "") => {
+  const a = String(left)
+  const b = String(right)
+  if (a === b) return 0
+  if (!a.length) return b.length
+  if (!b.length) return a.length
+
+  const matrix = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0))
+  for (let i = 0; i <= a.length; i += 1) matrix[i][0] = i
+  for (let j = 0; j <= b.length; j += 1) matrix[0][j] = j
+
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      )
+    }
+  }
+
+  return matrix[a.length][b.length]
+}
+
+const resolveCatalogOption = (rawValue, catalogOptions = []) => {
+  const source = cleanText(rawValue)
+  if (!source) return null
+
+  const normalizedSource = normalizeLookupText(source)
+  const collapsedSource = collapseLookupText(source)
+  if (!normalizedSource || !collapsedSource) return null
+
+  const candidates = Array.from(
+    new Map(
+      (Array.isArray(catalogOptions) ? catalogOptions : [])
+        .map((value) => cleanText(value))
+        .filter(Boolean)
+        .map((value) => [normalizeLookupText(value), {
+          value,
+          normalized: normalizeLookupText(value),
+          collapsed: collapseLookupText(value),
+        }])
+    ).values()
+  )
+  if (candidates.length === 0) return null
+
+  const exactMatch = candidates.find((candidate) => (
+    candidate.normalized === normalizedSource || candidate.collapsed === collapsedSource
+  ))
+  if (exactMatch) return exactMatch.value
+
+  if (collapsedSource.length >= 4) {
+    const containsMatch = candidates.find((candidate) => (
+      candidate.collapsed.includes(collapsedSource) || collapsedSource.includes(candidate.collapsed)
+    ))
+    if (containsMatch) return containsMatch.value
+  }
+
+  if (collapsedSource.length < 4) return null
+
+  let bestCandidate = null
+  let bestScore = 0
+  for (const candidate of candidates) {
+    const distance = levenshteinDistance(collapsedSource, candidate.collapsed)
+    const maxLength = Math.max(collapsedSource.length, candidate.collapsed.length)
+    const score = maxLength > 0 ? 1 - (distance / maxLength) : 0
+    if (score > bestScore) {
+      bestScore = score
+      bestCandidate = candidate
+    }
+  }
+
+  return bestScore >= 0.76 ? bestCandidate?.value || null : null
+}
 
 const normalizeSex = (value) => {
   const raw =
@@ -219,7 +308,7 @@ const buildTemplateFile = () => {
     "Breed",
     "Sex",
     "Weight (OPTIONAL)",
-    "Purchase Price (OPTIONAL)",
+    "Paid Price (OPTIONAL)",
     "Sell Price (OPTIONAL)",
     "Seller",
     "Dairy (OPTIONAL)",
@@ -230,7 +319,7 @@ const buildTemplateFile = () => {
     "Shipped Out Date (OPTIONAL)",
     "Shipped To (OPTIONAL)",
     "Condition (OPTIONAL)",
-    "Pre Days On Feed (OPTIONAL)",
+    "Pre DOF (OPTIONAL)",
   ]
 
   const sampleRow = [
@@ -321,6 +410,7 @@ const AddCalves = () => {
   const [previewSearchField, setPreviewSearchField] = useState("all")
   const [previewBreed, setPreviewBreed] = useState([])
   const [previewSeller, setPreviewSeller] = useState([])
+  const [previewSex, setPreviewSex] = useState([])
   const [previewStatus, setPreviewStatus] = useState("")
   const [previewDateFrom, setPreviewDateFrom] = useState("")
   const [previewDateTo, setPreviewDateTo] = useState("")
@@ -486,7 +576,7 @@ const AddCalves = () => {
       EID: row.payload.EID || "-",
       backTag: row.payload.backTag || "-",
       dateIn: row.payload.dateIn || "-",
-      breed: row.payload.breed ? toTitleCase(row.payload.breed) : "-",
+      breed: row.payload.breed || "-",
       sex: row.payload.sex || "-",
       status: row.payload.status === "deceased" ? "dead" : (row.payload.status || "-"),
       weight: row.payload.weight ?? "-",
@@ -518,9 +608,8 @@ const AddCalves = () => {
     { key: "breed", label: "Breed" },
     { key: "sex", label: "Sex" },
     { key: "weight", label: "Weight" },
-    { key: "purchasePrice", label: "Purchase Price" },
+    { key: "purchasePrice", label: "Paid Price" },
     { key: "seller", label: "Seller" },
-    { key: "dairy", label: "Dairy" },
     { key: "status", label: "Status" },
   ]), [])
 
@@ -538,6 +627,10 @@ const AddCalves = () => {
   )
   const previewSellerOptions = useMemo(
     () => [...new Set(previewRows.map((row) => row.seller).filter((value) => value && value !== "-"))],
+    [previewRows]
+  )
+  const previewSexOptions = useMemo(
+    () => [...new Set(previewRows.map((row) => row.sex).filter((value) => value && value !== "-"))],
     [previewRows]
   )
   const previewStatusOptions = useMemo(
@@ -585,12 +678,13 @@ const getSearchPlaceholder = (mode, field) => {
 
       const breedMatch = previewBreed.length === 0 || previewBreed.includes(row.breed)
       const sellerMatch = previewSeller.length === 0 || previewSeller.includes(row.seller)
+      const sexMatch = previewSex.length === 0 || previewSex.includes(row.sex)
       const statusMatch = !previewStatus || row.status === previewStatus
 
       const rowDate = row.dateIn && row.dateIn !== "-" ? row.dateIn : ""
       const dateRangeMatch = isDateInDateRange(rowDate, previewDateFrom, previewDateTo)
 
-      return searchMatch && breedMatch && sellerMatch && statusMatch && dateRangeMatch
+      return searchMatch && breedMatch && sellerMatch && sexMatch && statusMatch && dateRangeMatch
     })
   }, [
     previewRows,
@@ -600,10 +694,38 @@ const getSearchPlaceholder = (mode, field) => {
     previewSearchField,
     previewBreed,
     previewSeller,
+    previewSex,
     previewStatus,
     previewDateFrom,
     previewDateTo,
   ])
+
+  const normalizePayloadAgainstCatalog = (payload) => {
+    const nextPayload = { ...payload }
+    const reviewIssues = []
+
+    const sourceBreed = cleanText(nextPayload.breed)
+    if (sourceBreed) {
+      const matchedBreed = resolveCatalogOption(sourceBreed, catalogBreedOptions)
+      if (matchedBreed) {
+        nextPayload.breed = matchedBreed
+      } else {
+        reviewIssues.push(`Breed "${sourceBreed}" has no close match in catalogs`)
+      }
+    }
+
+    const sourceSeller = cleanText(nextPayload.seller)
+    if (sourceSeller) {
+      const matchedSeller = resolveCatalogOption(sourceSeller, catalogSellerOptions)
+      if (matchedSeller) {
+        nextPayload.seller = matchedSeller
+      } else {
+        reviewIssues.push(`Seller "${sourceSeller}" has no close match in catalogs`)
+      }
+    }
+
+    return { payload: nextPayload, reviewIssues }
+  }
 
   const handleFileSelect = (selectedFile) => {
     setFile(selectedFile)
@@ -656,7 +778,7 @@ const getSearchPlaceholder = (mode, field) => {
         const row = mapRawRow(rawRow)
         const errors = []
 
-        const payload = {
+        const basePayload = {
           primaryID: cleanText(row.primaryID),
           EID: cleanText(row.EID),
           backTag: cleanText(row.backTag),
@@ -681,6 +803,8 @@ const getSearchPlaceholder = (mode, field) => {
           preDaysOnFeed: parseInteger(row.preDaysOnFeed) ?? 0,
         }
 
+        const { payload, reviewIssues } = normalizePayloadAgainstCatalog(basePayload)
+
         if (!payload.primaryID) errors.push("Visual Tag/primaryID is required")
         if (!payload.dateIn) errors.push("Date In is required")
         if (!payload.breed) errors.push("Breed is required")
@@ -693,6 +817,9 @@ const getSearchPlaceholder = (mode, field) => {
         if (!payload.currentRanchID) errors.push("currentRanchID is required")
         if (cleanText(row.status) && !normalizeStatus(row.status)) {
           errors.push(`Status value "${cleanText(row.status)}" is invalid. Use feeding, alive, sold, shipped, or dead/deceased`)
+        }
+        if (reviewIssues.length > 0) {
+          errors.push(`Needs review: ${reviewIssues.join("; ")}`)
         }
 
         const tagKey = normalizeIdentifier(payload.primaryID)
@@ -755,6 +882,10 @@ const getSearchPlaceholder = (mode, field) => {
   }
 
   const handleValidateFile = async () => {
+    if (catalogBreedOptions.length === 0 || catalogSellerOptions.length === 0) {
+      showError("Breeds and sellers catalogs are required before Excel validation.")
+      return
+    }
     setShouldScrollToValidated(true)
     await parseExcel()
   }
@@ -793,13 +924,35 @@ const getSearchPlaceholder = (mode, field) => {
     const reportRows = []
 
     for (const row of validRows) {
-      try {
-        await createCalf({ ...row.payload, createdBy: createdByName }, token)
-        created += 1
+      const { payload: normalizedPayload, reviewIssues } = normalizePayloadAgainstCatalog(row.payload)
+      if (reviewIssues.length > 0) {
+        failed += 1
+        const message = `Needs review: ${reviewIssues.join("; ")}`
+        errors.push({
+          rowNumber: row.rowNumber,
+          message,
+        })
         reportRows.push({
           rowNumber: row.rowNumber,
           visualTag: row.payload.primaryID,
           eid: row.payload.EID || "",
+          result: "review",
+          message,
+        })
+        continue
+      }
+
+      try {
+        await createCalf(
+          { ...normalizedPayload, createdBy: createdByName },
+          token,
+          { headers: { "x-master-data-mode": "catalog-only" } }
+        )
+        created += 1
+        reportRows.push({
+          rowNumber: row.rowNumber,
+          visualTag: normalizedPayload.primaryID,
+          eid: normalizedPayload.EID || "",
           result: "created",
           message: "",
         })
@@ -959,7 +1112,7 @@ const getSearchPlaceholder = (mode, field) => {
       } else if (key === "dateIn") {
         payload.dateIn = normalizeDate(value) || payload.dateIn
       } else if (key === "breed") {
-        payload[key] = toTitleCase(value)
+        payload[key] = cleanText(value)
       } else if (key === "seller") {
         payload[key] = cleanText(value)
       } else {
@@ -1238,7 +1391,7 @@ const getSearchPlaceholder = (mode, field) => {
                 )}
               </div>
               <p className="text-xs text-secondary">
-                Auto-fix standardizes valid rows only: trims IDs/text, normalizes breed casing, and normalizes sex/status values. It does not fix missing required fields.
+                Auto-fix standardizes valid rows only: trims IDs/text, normalizes sex/status values, and attempts fuzzy match to existing breeds/sellers catalogs. If no match exists, the row stays in review.
               </p>
             </div>
 
@@ -1331,6 +1484,27 @@ const getSearchPlaceholder = (mode, field) => {
                     aria-label={`Include row ${row.rowNumber}`}
                   />
                 ),
+                primaryID: (row) => (
+                  <input
+                    className="w-full min-w-0 rounded-md border border-primary-border/30 px-2 py-1 text-xs"
+                    value={row.primaryID === "-" ? "" : row.primaryID}
+                    onChange={(e) => updateValidRowField(row.rowNumber, "primaryID", e.target.value)}
+                  />
+                ),
+                EID: (row) => (
+                  <input
+                    className="w-full min-w-0 rounded-md border border-primary-border/30 px-2 py-1 text-xs"
+                    value={row.EID === "-" ? "" : row.EID}
+                    onChange={(e) => updateValidRowField(row.rowNumber, "EID", e.target.value)}
+                  />
+                ),
+                backTag: (row) => (
+                  <input
+                    className="w-full min-w-0 rounded-md border border-primary-border/30 px-2 py-1 text-xs"
+                    value={row.backTag === "-" ? "" : row.backTag}
+                    onChange={(e) => updateValidRowField(row.rowNumber, "backTag", e.target.value)}
+                  />
+                ),
                 dateIn: (row) => (
                   <StyledDateInput
                     inputClassName="h-[30px] min-w-0 rounded-md border-primary-border/30 px-2 py-1 text-xs"
@@ -1340,11 +1514,17 @@ const getSearchPlaceholder = (mode, field) => {
                   />
                 ),
                 breed: (row) => (
-                  <input
+                  <select
                     className="w-full min-w-0 rounded-md border border-primary-border/30 px-2 py-1 text-xs"
                     value={row.breed === "-" ? "" : row.breed}
                     onChange={(e) => updateValidRowField(row.rowNumber, "breed", e.target.value)}
-                  />
+                    disabled={catalogBreedOptions.length === 0}
+                  >
+                    <option value="" disabled>{catalogBreedOptions.length === 0 ? "No breeds available" : "Select breed"}</option>
+                    {catalogBreedOptions.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
                 ),
                 sex: (row) => (
                   <select
@@ -1370,12 +1550,32 @@ const getSearchPlaceholder = (mode, field) => {
                     <option value="dead">Dead</option>
                   </select>
                 ),
-                seller: (row) => (
+                weight: (row) => (
                   <input
+                    className="w-full min-w-0 rounded-md border border-primary-border/30 px-2 py-1 text-xs text-right"
+                    value={row.weight === "-" ? "" : row.weight}
+                    onChange={(e) => updateValidRowField(row.rowNumber, "weight", e.target.value)}
+                  />
+                ),
+                purchasePrice: (row) => (
+                  <input
+                    className="w-full min-w-0 rounded-md border border-primary-border/30 px-2 py-1 text-xs text-right"
+                    value={row.purchasePrice === "-" ? "" : row.purchasePrice}
+                    onChange={(e) => updateValidRowField(row.rowNumber, "purchasePrice", e.target.value)}
+                  />
+                ),
+                seller: (row) => (
+                  <select
                     className="w-full min-w-0 rounded-md border border-primary-border/30 px-2 py-1 text-xs"
                     value={row.seller === "-" ? "" : row.seller}
                     onChange={(e) => updateValidRowField(row.rowNumber, "seller", e.target.value)}
-                  />
+                    disabled={catalogSellerOptions.length === 0}
+                  >
+                    <option value="" disabled>{catalogSellerOptions.length === 0 ? "No sellers available" : "Select seller"}</option>
+                    {catalogSellerOptions.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
                 ),
               }}
                 headerRenderers={{
@@ -1441,14 +1641,18 @@ const getSearchPlaceholder = (mode, field) => {
                       className="w-full"
                       breed={previewBreed}
                       seller={previewSeller}
+                      sex={previewSex}
                       status={previewStatus}
                       breedOptions={previewBreedOptions}
                       sellerOptions={previewSellerOptions}
+                      sexOptions={previewSexOptions}
                       statusOptions={previewStatusOptions}
+                      showSex
                       showStatus
-                      onChange={({ breed, seller, status }) => {
+                      onChange={({ breed, seller, sex, status }) => {
                         setPreviewBreed(Array.isArray(breed) ? breed : (breed ? [breed] : []))
                         setPreviewSeller(Array.isArray(seller) ? seller : (seller ? [seller] : []))
+                        setPreviewSex(Array.isArray(sex) ? sex : (sex ? [sex] : []))
                         setPreviewStatus(status || "")
                       }}
                     />
@@ -1487,6 +1691,7 @@ const getSearchPlaceholder = (mode, field) => {
                         setPreviewSearchField("all")
                         setPreviewBreed([])
                         setPreviewSeller([])
+                        setPreviewSex([])
                         setPreviewStatus("")
                         setPreviewDateFrom("")
                         setPreviewDateTo("")
@@ -1701,7 +1906,7 @@ const getSearchPlaceholder = (mode, field) => {
               </div>
             </div>
             <div>
-              <label className="text-xs font-semibold text-secondary">Purchase Price</label>
+              <label className="text-xs font-semibold text-secondary">Paid Price</label>
               <div className="relative">
                 <input className={clearableInputClass} value={singleForm.purchasePrice} onChange={(e) => handleSingleChange("purchasePrice", e.target.value)} />
                 {singleForm.purchasePrice && (

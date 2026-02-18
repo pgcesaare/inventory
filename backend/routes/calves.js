@@ -1,4 +1,5 @@
 const express = require('express')
+const boom = require('@hapi/boom')
 const validatorHandler = require('../middlewares/validator.handler')
 const { createCalvesSchema, getCalvesSchema, updateCalvesSchema } = require('../schemas/calves.schema')
 const CalvesService = require('../services/calves.service')
@@ -87,15 +88,36 @@ const normalizeDateField = (value) => {
   return date.startOf('day').toISOString()
 }
 
-const standardizeMasterFields = async (payload) => {
+const standardizeMasterFields = async (payload, options = {}) => {
+  const allowMasterDataCreation = options.allowMasterDataCreation !== false
+  const enableFuzzyMatch = options.enableFuzzyMatch === true
+  const unresolvedFields = []
   const nextPayload = { ...payload }
 
   if (Object.prototype.hasOwnProperty.call(nextPayload, 'breed')) {
-    nextPayload.breed = await ensureBreedName(nextPayload.breed)
+    const sourceBreed = nextPayload.breed
+    const resolvedBreed = await ensureBreedName(sourceBreed, {
+      allowCreate: allowMasterDataCreation,
+      fuzzyMatch: enableFuzzyMatch,
+    })
+    if (!resolvedBreed && sourceBreed) unresolvedFields.push('breed')
+    nextPayload.breed = resolvedBreed
   }
 
   if (Object.prototype.hasOwnProperty.call(nextPayload, 'seller')) {
-    nextPayload.seller = await ensureSellerName(nextPayload.seller)
+    const sourceSeller = nextPayload.seller
+    const resolvedSeller = await ensureSellerName(sourceSeller, {
+      allowCreate: allowMasterDataCreation,
+      fuzzyMatch: enableFuzzyMatch,
+    })
+    if (!resolvedSeller && sourceSeller) unresolvedFields.push('seller')
+    nextPayload.seller = resolvedSeller
+  }
+
+  if (unresolvedFields.length > 0) {
+    throw boom.badRequest(
+      `Could not match ${unresolvedFields.join(' and ')} to existing catalog. Row moved to review.`
+    )
   }
 
   return nextPayload
@@ -171,6 +193,9 @@ router.post('/',
   async (req, res, next) => {
     try {
       let body = normalizeIncomingCalfPayload(req.body, { forceCreationFields: true })
+      const masterDataMode = String(req.get('x-master-data-mode') || '').trim().toLowerCase()
+      const allowMasterDataCreation = masterDataMode !== 'catalog-only'
+      const enableFuzzyMatch = masterDataMode === 'catalog-only'
       const fallbackCreatedBy = String(body?.createdBy || '').trim() || null
       const createdBy = getCreatedByFromRequest(req) || fallbackCreatedBy
 
@@ -178,7 +203,7 @@ router.post('/',
       body.deathDate = normalizeDateField(body.deathDate)
       body.shippedOutDate = normalizeDateField(body.shippedOutDate)
       body.createdBy = createdBy
-      body = await standardizeMasterFields(body)
+      body = await standardizeMasterFields(body, { allowMasterDataCreation, enableFuzzyMatch })
 
       const newCalf = await service.create(body)
       res.status(201).json(newCalf)

@@ -27,6 +27,11 @@ module.exports = {
           type: Sequelize.STRING,
           unique: true,
         },
+        order_index: {
+          allowNull: false,
+          type: Sequelize.INTEGER,
+          defaultValue: 0,
+        },
         created_at: {
           allowNull: false,
           type: Sequelize.DATE,
