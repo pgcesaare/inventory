@@ -32,7 +32,7 @@ function boomErrorHandler(err, req, res, next) {
 
 function ormErrorHandler(err, req, res, next) {
   if (err instanceof ValidationError) {
-    res.status(400).json({
+    return res.status(400).json({
       statusCode: 409,
       message: err.name,
       errors: err.errors
@@ -40,7 +40,7 @@ function ormErrorHandler(err, req, res, next) {
   }
 
   if (err instanceof ForeignKeyConstraintError) {
-    res.status(400).json({
+    return res.status(400).json({
       statusCode: 400,
       message: err.name,
       errors: err.errors
@@ -48,7 +48,7 @@ function ormErrorHandler(err, req, res, next) {
   }
 
     if (err instanceof DatabaseError) {
-      res.status(400).json({
+      return res.status(400).json({
         statusCode: 400,
         message: err.name,
         errors: err.errors
@@ -56,8 +56,18 @@ function ormErrorHandler(err, req, res, next) {
     }
 
   if (err instanceof UniqueConstraintError) {
-    res.status(409).json({
-      message: err.name,
+    const firstError = Array.isArray(err.errors) && err.errors.length > 0 ? err.errors[0] : null
+    const field = firstError?.path || Object.keys(err.fields || {})[0] || null
+    const value = firstError?.value || (field ? err.fields?.[field] : null)
+    const message = field && value
+      ? `${field} "${value}" already exists.`
+      : "A record with the same unique value already exists."
+
+    return res.status(409).json({
+      statusCode: 409,
+      message,
+      field,
+      value,
       errors: err.errors
     })
   }

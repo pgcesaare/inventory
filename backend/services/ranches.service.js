@@ -1,4 +1,5 @@
 const { Op, fn, col } = require('sequelize')
+const boom = require('@hapi/boom')
 const { sequelize, model } = require('../db/libs/sequelize')
 
 const toNullableNumber = (value) => {
@@ -156,6 +157,7 @@ const buildDefaultPricePeriodRows = ({ hasWeightBrackets = false } = {}) => ([
 
 const normalizeStateValue = (value) => String(value || '').trim()
 const normalizeStateTemplateKey = (value) => normalizeStateValue(value).toLowerCase()
+const normalizeRanchName = (value) => String(value || '').trim()
 
 const mapWeightCategoryRowsForPersistence = (rows = []) => (
     rows.map((row, index) => ({
@@ -187,6 +189,34 @@ const mapPricePeriodRowsForPersistence = (rows = []) => {
 
 class RanchesService {
     constructor(){
+    }
+
+    async ensureUniqueRanchName(name, { excludeRanchId = null, transaction } = {}) {
+        const normalizedName = normalizeRanchName(name)
+        if (!normalizedName) {
+            throw boom.badRequest('Ranch name is required')
+        }
+
+        const where = {
+            [Op.and]: [
+                sequelize.where(fn('lower', col('name')), normalizedName.toLowerCase()),
+            ],
+        }
+        if (Number.isFinite(Number(excludeRanchId))) {
+            where.id = { [Op.ne]: Number(excludeRanchId) }
+        }
+
+        const existing = await model.Ranches.findOne({
+            where,
+            attributes: ['id', 'name'],
+            transaction,
+        })
+
+        if (existing) {
+            throw boom.conflict(`Ranch "${existing.name}" already exists.`)
+        }
+
+        return normalizedName
     }
 
     async replaceWeightCategoriesForRanch(ranchId, categories, transaction) {
@@ -491,7 +521,10 @@ class RanchesService {
         const normalizedPricePeriods = normalizePricePeriods(pricePeriods)
 
         const created = await sequelize.transaction(async (transaction) => {
-            const newRanch = await model.Ranches.create({ ...ranchData }, { transaction })
+            const nextRanchData = { ...ranchData }
+            nextRanchData.name = await this.ensureUniqueRanchName(nextRanchData.name, { transaction })
+
+            const newRanch = await model.Ranches.create(nextRanchData, { transaction })
             const template = await this.getStateTemplate(newRanch.state, {
                 transaction,
                 excludeRanchId: newRanch.id,
@@ -637,6 +670,13 @@ class RanchesService {
         const previousState = normalizeStateValue(ranchModel.state)
 
         await sequelize.transaction(async (transaction) => {
+            if (Object.prototype.hasOwnProperty.call(ranchChanges, 'name')) {
+                ranchChanges.name = await this.ensureUniqueRanchName(ranchChanges.name, {
+                    excludeRanchId: ranchId,
+                    transaction,
+                })
+            }
+
             if (Object.keys(ranchChanges).length > 0) {
                 await ranchModel.update(ranchChanges, { transaction })
             }

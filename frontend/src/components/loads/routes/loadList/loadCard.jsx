@@ -99,7 +99,7 @@ const LoadCard = ({
             </span>
           </div>
           <h3 className="mt-1 text-base font-semibold text-primary-text truncate">
-            {destination || "Unknown ranch"}
+            {destination || shippedTo || "Unknown ranch"}
           </h3>
           <div className="mt-1 flex items-center gap-1 text-xs text-secondary">
             <MapPin className="size-3" />

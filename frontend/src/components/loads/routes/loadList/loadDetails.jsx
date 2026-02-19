@@ -160,6 +160,11 @@ const getCalfArrivalStatusShortLabel = (value) => {
   return CALF_ARRIVAL_STATUS_META[normalized]?.shortLabel || "In Load"
 }
 
+const toPositiveIntegerOrNull = (value) => {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
 const isCalfCountedInLoadSummary = (calf) => {
   const statusKey = getCalfArrivalStatusKey(calf?.arrivalStatus)
   return statusKey === "in_load" || statusKey === "issue"
@@ -453,14 +458,20 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
   const originName = load.origin?.name || "-"
   const shippedOutDate = load.shippedOutDate || load.departureDate
   const activeRanchIdNumber = Number(routeRanchId || ranch?.id)
+  const originRanchIdNumber = toPositiveIntegerOrNull(load.originRanchID)
+  const destinationRanchIdNumber = toPositiveIntegerOrNull(load.destinationRanchID)
+  const hasDestinationRanch = Boolean(destinationRanchIdNumber)
   const canDeleteLoad = Number.isFinite(activeRanchIdNumber) && Number(load.originRanchID) === activeRanchIdNumber
   const canEditCalfArrivalStatus = (
     Number.isFinite(activeRanchIdNumber) &&
-    Number.isFinite(Number(load.destinationRanchID)) &&
     String(load.status || "").toLowerCase() === "arrived" &&
     (
-      Number(load.originRanchID) === activeRanchIdNumber ||
-      Number(load.destinationRanchID) === activeRanchIdNumber
+      hasDestinationRanch
+        ? (
+          originRanchIdNumber === activeRanchIdNumber ||
+          destinationRanchIdNumber === activeRanchIdNumber
+        )
+        : originRanchIdNumber === activeRanchIdNumber
     )
   )
   const normalizedStatus = String(load.status || "").toLowerCase()
@@ -468,8 +479,8 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
     Number.isFinite(activeRanchIdNumber) &&
     normalizedStatus === "arrived" &&
     (
-      Number(load.originRanchID) === activeRanchIdNumber ||
-      Number(load.destinationRanchID) === activeRanchIdNumber
+      originRanchIdNumber === activeRanchIdNumber ||
+      destinationRanchIdNumber === activeRanchIdNumber
     )
   )
   const statusMeta = {
@@ -676,8 +687,8 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
         showError("Select an active ranch to edit calf load status.")
       } else if (String(load.status || "").toLowerCase() !== "arrived") {
         showError("Load must be marked as Arrived before editing calf load status.")
-      } else if (!Number.isFinite(Number(load.destinationRanchID))) {
-        showError("Calf load status actions are available only for ranch-to-ranch loads.")
+      } else if (!hasDestinationRanch && originRanchIdNumber !== activeRanchIdNumber) {
+        showError("Only origin ranch can edit calf load status for custom destination loads.")
       } else {
         showError("Only origin or destination ranch can edit calf load status.")
       }
@@ -711,8 +722,8 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
         showError("Select an active ranch to edit calf load status.")
       } else if (String(load.status || "").toLowerCase() !== "arrived") {
         showError("Load must be marked as Arrived before editing calf load status.")
-      } else if (!Number.isFinite(Number(load.destinationRanchID))) {
-        showError("Calf load status actions are available only for ranch-to-ranch loads.")
+      } else if (!hasDestinationRanch && originRanchIdNumber !== activeRanchIdNumber) {
+        showError("Only origin ranch can edit calf load status for custom destination loads.")
       } else {
         showError("Only origin or destination ranch can edit calf load status.")
       }

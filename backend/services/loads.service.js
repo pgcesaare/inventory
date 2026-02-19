@@ -5,6 +5,11 @@ const { sequelize, model } = require('../db/libs/sequelize')
 class LoadsService {
   constructor() {}
 
+  toPositiveIntegerOrNull(value) {
+    const parsed = Number(value)
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+  }
+
   getLoadStatus(loadData = {}) {
     const notesValue = String(loadData.notes || '').toLowerCase()
     if (/(canceled|cancelled|cancel)/.test(notesValue)) return 'canceled'
@@ -417,21 +422,21 @@ class LoadsService {
     const t = await sequelize.transaction()
 
     try {
-      const loadId = Number(id)
-      const calfID = Number(payload?.calfID)
-      const actingRanchID = Number(payload?.actingRanchID)
+      const loadId = this.toPositiveIntegerOrNull(id)
+      const calfID = this.toPositiveIntegerOrNull(payload?.calfID)
+      const actingRanchID = this.toPositiveIntegerOrNull(payload?.actingRanchID)
       const hasArrivalStatusField = Object.prototype.hasOwnProperty.call(payload || {}, 'arrivalStatus')
       const arrivalStatus = hasArrivalStatusField
         ? this.normalizeLoadCalfArrivalStatus(payload.arrivalStatus)
         : null
 
-      if (!Number.isFinite(loadId)) {
+      if (!loadId) {
         throw boom.badRequest('Valid load id is required')
       }
-      if (!Number.isFinite(calfID)) {
+      if (!calfID) {
         throw boom.badRequest('Valid calf id is required')
       }
-      if (!Number.isFinite(actingRanchID)) {
+      if (!actingRanchID) {
         throw boom.badRequest('Valid acting ranch id is required')
       }
       if (hasArrivalStatusField && payload.arrivalStatus !== null && String(payload.arrivalStatus).trim() !== '' && !arrivalStatus) {
@@ -446,15 +451,19 @@ class LoadsService {
         throw boom.badRequest('Calf arrival status can only be edited once the load is marked as arrived')
       }
 
-      const originRanchID = Number(loadData.originRanchID)
-      const destinationRanchID = Number(loadData.destinationRanchID)
-      if (!Number.isFinite(destinationRanchID)) {
-        throw boom.badRequest('Calf arrival status is only available for ranch-to-ranch loads')
-      }
+      const originRanchID = this.toPositiveIntegerOrNull(loadData.originRanchID)
+      const destinationRanchID = this.toPositiveIntegerOrNull(loadData.destinationRanchID)
+      const hasDestinationRanch = Boolean(destinationRanchID)
 
-      const canEditFromRanch = actingRanchID === originRanchID || actingRanchID === destinationRanchID
+      const canEditFromRanch = hasDestinationRanch
+        ? (actingRanchID === originRanchID || actingRanchID === destinationRanchID)
+        : (actingRanchID === originRanchID)
       if (!canEditFromRanch) {
-        throw boom.forbidden('Only origin or destination ranch can edit calf arrival status')
+        throw boom.forbidden(
+          hasDestinationRanch
+            ? 'Only origin or destination ranch can edit calf arrival status'
+            : 'Only origin ranch can edit calf arrival status for custom destination loads'
+        )
       }
 
       const calfLoad = await model.CalfLoads.findOne({
@@ -473,19 +482,21 @@ class LoadsService {
       const destinationLabel = String(loadData.destinationName || '').trim() || null
       const departureDateValue = loadData.departureDate || null
       const arrivalDateValue = loadData.arrivalDate || new Date()
-      const safeOriginRanchID = Number.isFinite(originRanchID) ? originRanchID : Number(calf.originRanchID)
-      const safeDestinationRanchID = Number.isFinite(destinationRanchID) ? destinationRanchID : Number(calf.currentRanchID)
+      const safeOriginRanchID = originRanchID || this.toPositiveIntegerOrNull(calf.originRanchID)
+      const safeDestinationRanchID = hasDestinationRanch
+        ? (destinationRanchID || this.toPositiveIntegerOrNull(calf.currentRanchID))
+        : null
 
-      if (!Number.isFinite(safeOriginRanchID)) {
+      if (!safeOriginRanchID) {
         throw boom.badRequest('Origin ranch is required to resolve calf arrival status')
       }
-      if (!Number.isFinite(safeDestinationRanchID)) {
+      if (hasDestinationRanch && !safeDestinationRanchID) {
         throw boom.badRequest('Destination ranch is required to resolve calf arrival status')
       }
 
       const nextCalfChanges = {}
       if (normalizedArrivalStatus === 'doa') {
-        nextCalfChanges.currentRanchID = safeDestinationRanchID
+        nextCalfChanges.currentRanchID = hasDestinationRanch ? safeDestinationRanchID : safeOriginRanchID
         nextCalfChanges.status = 'deceased'
         nextCalfChanges.deathDate = arrivalDateValue
         nextCalfChanges.shippedOutDate = departureDateValue
@@ -497,9 +508,11 @@ class LoadsService {
         nextCalfChanges.shippedOutDate = null
         nextCalfChanges.shippedTo = null
       } else {
-        // In Load or Issue: calf remains as arrived at destination.
-        nextCalfChanges.currentRanchID = safeDestinationRanchID
-        nextCalfChanges.status = 'feeding'
+        // In Load or Issue:
+        // - Ranch-to-ranch: calf remains feeding at destination.
+        // - Custom destination: calf remains shipped from origin.
+        nextCalfChanges.currentRanchID = hasDestinationRanch ? safeDestinationRanchID : safeOriginRanchID
+        nextCalfChanges.status = hasDestinationRanch ? 'feeding' : 'shipped'
         nextCalfChanges.deathDate = null
         nextCalfChanges.shippedOutDate = departureDateValue
         nextCalfChanges.shippedTo = destinationLabel

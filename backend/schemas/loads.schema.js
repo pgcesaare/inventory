@@ -2,7 +2,7 @@ const Joi = require('joi')
 
 const id = Joi.number().integer()
 const originRanchID = Joi.number().integer()
-const destinationRanchID = Joi.number().integer()
+const destinationRanchID = Joi.number().integer().allow(null)
 const destinationName = Joi.string().max(255).trim().allow(null, '')
 const departureDate = Joi.date()
 const arrivalDate = Joi.date()
