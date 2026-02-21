@@ -32,6 +32,19 @@ const normalizeIncomingCalfPayload = (body, { forceCreationFields = false } = {}
     return normalized
   }
 
+  const normalizeSellStatus = (sellStatusValue) => {
+    const normalized = String(sellStatusValue ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]/g, ' ')
+      .replace(/\s+/g, ' ')
+
+    if (!normalized) return ''
+    if (normalized === 'open') return 'open'
+    if (normalized === 'sold') return 'sold'
+    return normalized
+  }
+
   if (Object.prototype.hasOwnProperty.call(payload, 'backTag')) {
     payload.originalID = payload.backTag
   }
@@ -54,8 +67,22 @@ const normalizeIncomingCalfPayload = (body, { forceCreationFields = false } = {}
     delete payload.status
   }
 
+  const normalizedSellStatus = normalizeSellStatus(payload.sellStatus)
+  if (normalizedSellStatus) {
+    payload.sellStatus = normalizedSellStatus
+  } else {
+    delete payload.sellStatus
+  }
+
   if (forceCreationFields && payload.status === undefined) {
     payload.status = 'feeding'
+  }
+  if (forceCreationFields && payload.sellStatus === undefined) {
+    payload.sellStatus = payload.status === 'sold' ? 'sold' : 'open'
+  }
+
+  if (payload.status === 'sold' && payload.sellStatus === undefined) {
+    payload.sellStatus = 'sold'
   }
 
   Object.keys(payload).forEach((key) => {

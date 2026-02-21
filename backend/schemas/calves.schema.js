@@ -16,6 +16,7 @@ const seller = Joi.string()
 const dairy = Joi.string()
 const condition = Joi.string()
 const status = Joi.string().valid('feeding','sold', 'alive', 'deceased', 'shipped').insensitive().trim()
+const sellStatus = Joi.string().valid('open', 'sold').insensitive().trim()
 const proteinLevel = Joi.number().precision(2)
 const proteinTest = Joi.string()
 const deathDate = Joi.date()
@@ -40,6 +41,7 @@ const createCalvesSchema = Joi.object({
     dairy: dairy.allow(null, ''),
     condition: condition.allow(null, ''),
     status: status.default('feeding'),
+    sellStatus: sellStatus.default('open'),
     proteinLevel: proteinLevel.allow(null),
     proteinTest: proteinTest.allow(null, ''),
     deathDate: deathDate.allow(null, ''),
@@ -77,6 +79,7 @@ const updateCalvesSchema = Joi.object({
     dairy: dairy.allow(null, ''),
     condition: condition.allow(null, ''),
     status: status,
+    sellStatus: sellStatus,
     proteinLevel: proteinLevel.allow(null),
     proteinTest: proteinTest.allow(null, ''),
     deathDate: deathDate.allow(null, ''),

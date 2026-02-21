@@ -134,6 +134,13 @@ const CalvesSchema = {
     defaultValue: 'feeding'
   },
 
+  sellStatus: {
+    allowNull: false,
+    type: DataTypes.STRING,
+    defaultValue: 'open',
+    field: 'sell_status',
+  },
+
   condition: {
     allowNull: true,
     type: DataTypes.STRING,

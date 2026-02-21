@@ -153,6 +153,7 @@ class LoadsService {
         sex: item.calf?.sex || null,
         seller: item.calf?.seller || null,
         status: item.calf?.status || null,
+        sellStatus: item.calf?.sellStatus || 'open',
         placedDate: item.calf?.placedDate || null,
         price: item.calf?.price ?? null,
         purchasePrice: item.calf?.price ?? null,

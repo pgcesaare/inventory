@@ -6,9 +6,15 @@ class CalvesService {
     }
     
     async create(data) {
+        const normalizedStatus = String(data.status || 'feeding').toLowerCase()
+        const normalizedSellStatus = String(
+            data.sellStatus || (normalizedStatus === 'sold' ? 'sold' : 'open')
+        ).toLowerCase()
+
         const createPayload = {
             ...data,
-            status: data.status || 'feeding'
+            status: normalizedStatus || 'feeding',
+            sellStatus: normalizedSellStatus === 'sold' ? 'sold' : 'open',
         }
 
         const newCalf = await model.Calves.create(createPayload)
@@ -188,6 +194,7 @@ class CalvesService {
                 dairy: calf.dairy,
                 condition: calf.condition,
                 status: calf.status,
+                sellStatus: calf.sellStatus || 'open',
                 proteinLevel: calf.proteinLevel,
                 proteinTest: calf.proteinTest,
                 deathDate: calf.deathDate,
@@ -228,9 +235,18 @@ class CalvesService {
         const previousState = calf.toJSON()
         const nextChanges = { ...changes }
 
+        if (nextChanges.sellStatus !== undefined && nextChanges.sellStatus !== null && nextChanges.sellStatus !== '') {
+            const normalizedSellStatus = String(nextChanges.sellStatus).toLowerCase().trim()
+            nextChanges.sellStatus = normalizedSellStatus === 'sold' ? 'sold' : 'open'
+        }
+
         // If a death date is provided, keep status consistent with a deceased calf.
         if (nextChanges.deathDate !== undefined && nextChanges.deathDate !== null && nextChanges.deathDate !== '') {
             nextChanges.status = 'deceased'
+        }
+
+        if (String(nextChanges.status || '').toLowerCase() === 'sold' && nextChanges.sellStatus === undefined) {
+            nextChanges.sellStatus = 'sold'
         }
 
         const updated = await calf.update(nextChanges)

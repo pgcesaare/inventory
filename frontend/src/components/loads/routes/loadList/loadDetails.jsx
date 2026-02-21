@@ -461,7 +461,13 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
   const originRanchIdNumber = toPositiveIntegerOrNull(load.originRanchID)
   const destinationRanchIdNumber = toPositiveIntegerOrNull(load.destinationRanchID)
   const hasDestinationRanch = Boolean(destinationRanchIdNumber)
-  const canDeleteLoad = Number.isFinite(activeRanchIdNumber) && Number(load.originRanchID) === activeRanchIdNumber
+  const canDeleteLoad = (
+    Number.isFinite(activeRanchIdNumber) &&
+    (
+      originRanchIdNumber === activeRanchIdNumber ||
+      destinationRanchIdNumber === activeRanchIdNumber
+    )
+  )
   const canEditCalfArrivalStatus = (
     Number.isFinite(activeRanchIdNumber) &&
     String(load.status || "").toLowerCase() === "arrived" &&
@@ -602,7 +608,7 @@ const LoadDetails = ({ load, onUpdated, onDeleted, initialAction = null, onIniti
   const handleDeleteLoad = async () => {
     if (!load?.id || !token) return
     if (!canDeleteLoad) {
-      showError("You can only delete loads shipped from this ranch.")
+      showError("Only origin or destination ranch can delete this load.")
       return
     }
 
